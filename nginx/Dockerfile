@@ -1,4 +1,4 @@
-FROM nginx:1.27-alpine
+FROM nginx:1.31-alpine
 
 # htpasswd для генерации Basic Auth из переменных окружения
 RUN apk add --no-cache apache2-utils
