@@ -1,0 +1,44 @@
+/* Дизайн-токены. Тёмная тема, зафиксированная (инфраструктурный инструмент).
+   Источник — макет ~/ovpn-admin-mockup.html. Правится здесь в одном месте. */
+:root {
+  --bg:          #0e131e;
+  --surface:     #161d2b;
+  --surface-2:   #1e2636;
+  --surface-3:   #263044;
+  --border:      #2b3649;
+  --border-soft: #212a3a;
+
+  --text:        #e6ebf5;
+  --text-dim:    #94a1b8;
+  --text-faint:  #5f6c82;
+
+  --accent:      #46b6d8;
+  --accent-hi:   #5cc4e2;
+  --accent-ink:  #0a2730;
+  --accent-soft: rgba(70, 182, 216, 0.14);
+
+  --ok:      #40c463;
+  --ok-soft: rgba(64, 196, 99, 0.13);
+  --ok-text: #7ee29a;
+  --warn:      #e0a13a;
+  --warn-soft: rgba(224, 161, 58, 0.14);
+  --warn-text: #f0c078;
+  --crit:      #ef6572;
+  --crit-soft: rgba(239, 101, 114, 0.13);
+  --crit-text: #f4909a;
+
+  --fs-xs: 12px;
+  --fs-sm: 13.5px;
+  --fs-base: 15px;
+  --fs-lg: 17px;
+  --fs-xl: 22px;
+  --fs-2xl: 30px;
+
+  --r: 7px;
+  --r-sm: 5px;
+
+  --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+
+  --shadow-modal: 0 24px 60px -12px rgba(0, 0, 0, 0.6);
+}
