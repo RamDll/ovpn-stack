@@ -1,18 +1,21 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import MetricStrip from './MetricStrip.vue'
 import Toolbar from './Toolbar.vue'
 import UsersTable from './UsersTable.vue'
 import type { RowAction } from './UsersTable.vue'
+import AddUserModal from './modals/AddUserModal.vue'
+import PasswordModal from './modals/PasswordModal.vue'
+import ConfirmModal from './modals/ConfirmModal.vue'
+import type { ConfirmKind } from './modals/ConfirmModal.vue'
+import ConfigModal from './modals/ConfigModal.vue'
+import CcdModal from './modals/CcdModal.vue'
 import { useUsers } from '@/composables/useUsers'
 import { useServerSettings } from '@/composables/useServerSettings'
-import { useToasts } from '@/composables/useToasts'
-import { ovpn } from '@/api/ovpn'
 
 const { filtered, stats, search, hideRevoked, setHideRevoked, loading, error, refresh, users } =
   useUsers()
-const { role, modules, isMaster } = useServerSettings()
-const toasts = useToasts()
+const { role, modules, isMaster, isSlave, hasModule } = useServerSettings()
 
 const DAY = 86_400_000
 const expiringSoon = computed(
@@ -24,27 +27,33 @@ const expiringSoon = computed(
     }).length,
 )
 
-async function downloadConfig(username: string) {
-  try {
-    const text = await ovpn.showConfig(username)
-    const blob = new Blob([text], { type: 'text/plain' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `${username}.ovpn`
-    link.click()
-    URL.revokeObjectURL(link.href)
-  } catch (e) {
-    toasts.error(`Не удалось получить конфиг для ${username}`, e instanceof Error ? e.message : undefined)
-  }
-}
+const addOpen = ref(false)
+const pwd = shallowRef<{ mode: 'change' | 'rotate'; username: string } | null>(null)
+const confirm = shallowRef<{ kind: ConfirmKind; username: string } | null>(null)
+const cfg = shallowRef<string | null>(null)
+const ccd = shallowRef<string | null>(null)
 
 function onAction(action: RowAction, username: string) {
-  if (action === 'download-config') {
-    void downloadConfig(username)
-    return
+  switch (action) {
+    case 'change-password':
+      pwd.value = { mode: 'change', username }
+      break
+    case 'rotate':
+      pwd.value = { mode: 'rotate', username }
+      break
+    case 'revoke':
+    case 'unrevoke':
+    case 'delete':
+    case 'disconnect':
+      confirm.value = { kind: action, username }
+      break
+    case 'download-config':
+      cfg.value = username
+      break
+    case 'edit-ccd':
+      ccd.value = username
+      break
   }
-  // модалки — следующие коммиты (см. PROGRESS.md)
-  toasts.info(`${action} → ${username}`, 'модалка в разработке')
 }
 </script>
 
@@ -72,16 +81,39 @@ function onAction(action: RowAction, username: string) {
       @update:search="search = $event"
       @update:hide-revoked="setHideRevoked($event)"
       @refresh="refresh"
-      @add="toasts.info('Add user', 'модалка в разработке')"
+      @add="addOpen = true"
     />
-    <UsersTable
-      :rows="filtered"
-      :loading="loading"
-      :role="role"
-      :modules="modules"
-      @action="onAction"
-    />
+    <UsersTable :rows="filtered" :loading="loading" :role="role" :modules="modules" @action="onAction" />
   </div>
+
+  <AddUserModal v-model:open="addOpen" />
+
+  <PasswordModal
+    v-if="pwd"
+    :open="true"
+    :username="pwd.username"
+    :mode="pwd.mode"
+    :ask-password="hasModule('passwdAuth')"
+    @update:open="pwd = null"
+  />
+
+  <ConfirmModal
+    v-if="confirm"
+    :open="true"
+    :username="confirm.username"
+    :kind="confirm.kind"
+    @update:open="confirm = null"
+  />
+
+  <ConfigModal v-if="cfg" :open="true" :username="cfg" @update:open="cfg = null" />
+
+  <CcdModal
+    v-if="ccd"
+    :open="true"
+    :username="ccd"
+    :readonly="isSlave"
+    @update:open="ccd = null"
+  />
 </template>
 
 <style scoped>

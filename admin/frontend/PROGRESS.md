@@ -44,21 +44,20 @@
 - [x] Оболочка: AppShell (топбар, роль, nav)
 - [x] Экран Users: Toolbar (поиск, hide revoked, add), UsersTable, StatusPill, MetricStrip
 - [x] Сборка `npm run build` зелёная, `docker compose build` зелёный, стек поднимается, список юзеров грузится
-- [ ] Модалка Add user (валидация, ошибки)
-- [ ] Change password
-- [ ] Rotate (+пароль)
-- [ ] Revoke / Unrevoke / Delete (подтверждения)
-- [ ] Show / Copy / Download `.ovpn`
-- [ ] Редактор CCD-маршрутов (статич. адрес + подтаблица, master/slave)
-- [ ] Disconnect активной сессии
+- [x] Модалка Add user (валидация, ошибки)
+- [x] Change password
+- [x] Rotate (+пароль)
+- [x] Revoke / Unrevoke / Delete / Disconnect (ConfirmModal)
+- [x] Show / Copy / Download `.ovpn` (ConfigModal)
+- [x] Редактор CCD-маршрутов (статич. адрес + подтаблица, master/slave readonly)
+- [x] ModalShell на reka-ui Dialog (фокус-ловушка, Esc, ARIA, scroll-lock)
+- [x] Персист фильтров (localStorage — в useUsers)
+- [x] Прогон флоу через CDP: add / config / revoke / rotate / ccd — ок
 - [ ] Столбец трафика за сессию (`api/user/statistic`)
-- [ ] MetricStrip: живые данные
-- [ ] Тосты во всех флоу, гейтинг master/slave + modules
-- [ ] Персист фильтров (localStorage)
-- [ ] a11y: фокус-ловушка в модалках, Esc, ARIA
-- [ ] Прогон всех флоу против живого ovpn-admin
-- [ ] CI-smoke зелёный, размер бандла
-- [ ] PR frontend-v3 → master
+- [ ] MetricStrip: живые данные (трафик)
+- [ ] a11y добивка: aria-labels на иконочных кнопках, фокус-возврат
+- [ ] Финальный прогон всех флоу + CI-smoke зелёный + размер бандла
+- [ ] PR frontend-v3 → master (снять draft)
 
 ## Заметки / решения
 

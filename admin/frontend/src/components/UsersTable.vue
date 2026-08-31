@@ -56,7 +56,7 @@ interface ActionDef {
 }
 
 const ACTIONS: ActionDef[] = [
-  { action: 'download-config', label: 'Download', when: (r) => r.AccountStatus === 'Active', roles: ['master', 'slave'], module: 'core' },
+  { action: 'download-config', label: 'Config', when: (r) => r.AccountStatus === 'Active', roles: ['master', 'slave'], module: 'core' },
   { action: 'edit-ccd', label: 'Routes', when: (r) => r.AccountStatus === 'Active', roles: ['master', 'slave'], module: 'ccd' },
   { action: 'change-password', label: 'Password', when: (r) => r.AccountStatus === 'Active', roles: ['master'], module: 'passwdAuth' },
   { action: 'disconnect', label: 'Disconnect', when: (r) => r.ConnectionStatus === 'Connected', roles: ['master'], module: 'core' },
