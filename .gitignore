@@ -1,0 +1,18 @@
+# Секреты и локальная конфигурация
+.env
+nginx/.htpasswd
+
+# TLS-сертификаты и ACME-challenge
+nginx/ssl/*
+!nginx/ssl/.gitkeep
+nginx/acme/*
+!nginx/acme/.gitkeep
+
+# Рантайм-данные OpenVPN: PKI (приватные ключи!), CCD, база пользователей
+data/
+
+# Build-артефакты
+*.log
+admin/ovpn-admin
+admin/frontend/node_modules
+admin/frontend/static/dist

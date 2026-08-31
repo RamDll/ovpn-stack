@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # метрики ovpn-admin (подключённые клиенты, трафик, срок годности сертификатов)
+  # порт 8080 живёт на контейнере openvpn (ovpn-admin делит его netns)
+  - job_name: 'ovpn-admin'
+    static_configs:
+      - targets: ['openvpn:8080']
+
+  # метрики хоста
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # самомониторинг Prometheus
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
