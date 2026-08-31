@@ -116,7 +116,14 @@ async function save() {
               <td><input v-model="r.Mask" class="input sm" :readonly="readonly" /></td>
               <td><input v-model="r.Description" class="input sm" :readonly="readonly" /></td>
               <td v-if="!readonly" class="del">
-                <button class="btn btn-ghost sm" type="button" @click="removeRoute(i)">✕</button>
+                <button
+                  class="btn btn-ghost sm"
+                  type="button"
+                  aria-label="Удалить маршрут"
+                  @click="removeRoute(i)"
+                >
+                  ✕
+                </button>
               </td>
             </tr>
             <tr v-if="!readonly" class="draft">
@@ -124,7 +131,14 @@ async function save() {
               <td><input v-model="draft.Mask" class="input sm" placeholder="255.255.255.0" /></td>
               <td><input v-model="draft.Description" class="input sm" placeholder="описание" /></td>
               <td class="del">
-                <button class="btn btn-primary sm" type="button" @click="addRoute">+</button>
+                <button
+                  class="btn btn-primary sm"
+                  type="button"
+                  aria-label="Добавить маршрут"
+                  @click="addRoute"
+                >
+                  +
+                </button>
               </td>
             </tr>
             <tr v-if="readonly && ccd.CustomRoutes.length === 0">

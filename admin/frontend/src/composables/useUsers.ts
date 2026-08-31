@@ -27,15 +27,15 @@ function setHideRevoked(v: boolean) {
   }
 }
 
-async function refresh() {
-  loading.value = true
+async function refresh(opts: { silent?: boolean } = {}) {
+  if (!opts.silent) loading.value = true
   error.value = null
   try {
     const list = await ovpn.listUsers()
     users.value = Array.isArray(list) ? list : []
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
-    users.value = []
+    if (!opts.silent) users.value = []
   } finally {
     loading.value = false
   }
