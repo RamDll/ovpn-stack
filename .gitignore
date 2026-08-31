@@ -15,4 +15,4 @@ data/
 *.log
 admin/ovpn-admin
 admin/frontend/node_modules
-admin/frontend/static/dist
+admin/frontend/static
