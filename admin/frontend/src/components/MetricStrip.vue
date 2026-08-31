@@ -5,6 +5,7 @@ defineProps<{
   revoked: number
   expired: number
   expiringSoon: number
+  traffic: string
 }>()
 </script>
 
@@ -25,8 +26,8 @@ defineProps<{
     </div>
     <div class="metric">
       <div class="k">Traffic, live sessions</div>
-      <div class="v u-num">&mdash;</div>
-      <div class="delta">подтянем из api/user/statistic</div>
+      <div class="v traffic-v">{{ traffic }}</div>
+      <div class="delta">{{ connected }} онлайн</div>
     </div>
   </div>
 </template>
@@ -70,6 +71,10 @@ defineProps<{
 }
 .is-warn .v {
   color: var(--warn);
+}
+.traffic-v {
+  font-size: var(--fs-lg);
+  font-family: var(--mono);
 }
 @media (max-width: 720px) {
   .metrics {

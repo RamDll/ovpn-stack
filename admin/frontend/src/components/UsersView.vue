@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef, watch, onMounted, onBeforeUnmount } from 'vue'
 import MetricStrip from './MetricStrip.vue'
 import Toolbar from './Toolbar.vue'
 import UsersTable from './UsersTable.vue'
@@ -12,10 +12,34 @@ import ConfigModal from './modals/ConfigModal.vue'
 import CcdModal from './modals/CcdModal.vue'
 import { useUsers } from '@/composables/useUsers'
 import { useServerSettings } from '@/composables/useServerSettings'
+import { useTraffic } from '@/composables/useTraffic'
+import { formatBytes } from '@/utils/format'
 
 const { filtered, stats, search, hideRevoked, setHideRevoked, loading, error, refresh, users } =
   useUsers()
 const { role, modules, isMaster, isSlave, hasModule } = useServerSettings()
+const { byUser: trafficByUser, total: trafficTotal, refresh: refreshTraffic } = useTraffic()
+
+const connectedNames = computed(() =>
+  users.value.filter((u) => u.ConnectionStatus === 'Connected').map((u) => u.Identity),
+)
+
+watch(connectedNames, (names) => void refreshTraffic(names), { immediate: true })
+
+let poll: number | undefined
+onMounted(() => {
+  poll = window.setInterval(() => {
+    void refresh({ silent: true })
+    void refreshTraffic(connectedNames.value)
+  }, 15_000)
+})
+onBeforeUnmount(() => window.clearInterval(poll))
+
+const trafficLabel = computed(() => {
+  const t = trafficTotal.value
+  if (t.rx + t.tx === 0) return '—'
+  return `${formatBytes(t.rx)} ↓ · ${formatBytes(t.tx)} ↑`
+})
 
 const DAY = 86_400_000
 const expiringSoon = computed(
@@ -69,6 +93,7 @@ function onAction(action: RowAction, username: string) {
     :revoked="stats.revoked"
     :expired="stats.expired"
     :expiring-soon="expiringSoon"
+    :traffic="trafficLabel"
   />
 
   <p v-if="error" class="load-error">Не удалось загрузить список: {{ error }}</p>
@@ -83,7 +108,14 @@ function onAction(action: RowAction, username: string) {
       @refresh="refresh"
       @add="addOpen = true"
     />
-    <UsersTable :rows="filtered" :loading="loading" :role="role" :modules="modules" @action="onAction" />
+    <UsersTable
+      :rows="filtered"
+      :loading="loading"
+      :role="role"
+      :modules="modules"
+      :traffic="trafficByUser"
+      @action="onAction"
+    />
   </div>
 
   <AddUserModal v-model:open="addOpen" />

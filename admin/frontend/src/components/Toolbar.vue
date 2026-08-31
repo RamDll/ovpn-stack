@@ -15,7 +15,7 @@ const emit = defineEmits<{
 <template>
   <div class="toolbar">
     <label class="search">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
         <circle cx="11" cy="11" r="7" />
         <path d="M21 21l-4.3-4.3" />
       </svg>
@@ -42,7 +42,7 @@ const emit = defineEmits<{
     <button class="btn btn-ghost" type="button" @click="emit('refresh')">Refresh</button>
 
     <button v-if="canCreate" class="btn btn-primary" type="button" @click="emit('add')">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true">
         <path d="M12 5v14M5 12h14" />
       </svg>
       Add user

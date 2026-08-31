@@ -22,7 +22,7 @@ const emit = defineEmits<{ 'update:open': [value: boolean] }>()
   <DialogRoot :open="open" @update:open="emit('update:open', $event)">
     <DialogPortal>
       <DialogOverlay class="overlay" />
-      <DialogContent class="modal" :class="{ wide }" @open-auto-focus.prevent>
+      <DialogContent class="modal" :class="{ wide }">
         <header>
           <div>
             <DialogTitle class="title">{{ title }}</DialogTitle>
