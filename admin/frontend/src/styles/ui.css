@@ -1,0 +1,101 @@
+/* Общие примитивы: кнопки, поля ввода, алерты. Используются во всех модалках. */
+
+.btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 13px;
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.btn-primary:not(:disabled):hover {
+  background: var(--accent-hi);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+.btn-ghost:not(:disabled):hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.btn-danger {
+  background: var(--crit);
+  color: #200a0c;
+}
+.btn-danger:not(:disabled):hover {
+  background: #f4808c;
+}
+.btn-warn {
+  background: var(--warn);
+  color: #241804;
+}
+.btn-warn:not(:disabled):hover {
+  background: #e9b055;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field > label {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-faint);
+  font-weight: 600;
+}
+.field .hint {
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+  font-family: var(--mono);
+}
+.input {
+  appearance: none;
+  width: 100%;
+  padding: 9px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+}
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.alert {
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  border: 1px solid;
+}
+.alert-error {
+  background: var(--crit-soft);
+  border-color: var(--crit);
+  color: var(--crit-text);
+}
+.alert-ok {
+  background: var(--ok-soft);
+  border-color: var(--ok);
+  color: var(--ok-text);
+}
