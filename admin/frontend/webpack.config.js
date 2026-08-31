@@ -1,5 +1,4 @@
 const path = require('path');
-//const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
 
 module.exports = {
     mode: 'production',
@@ -16,9 +15,6 @@ module.exports = {
       publicPath: '/dist/',
       filename: '[name].min.js'
     },
-    plugins: [
-      //new BundleAnalyzerPlugin(),
-    ],
     module: {
       rules: [
         {
@@ -30,21 +26,21 @@ module.exports = {
         },
         {
           test: /\.js$/,
-          //exclude: /node_modules\/(?!bootstrap-vue\/src\/)/,
           exclude: /node_modules/,
           loader: 'babel-loader',
-          options: {
-            presets: ['@babel/preset-env']
-          }
+          // конфигурация в .babelrc
+        },
+        {
+          // шрифты/картинки из CSS зависимостей (bootstrap, vue-good-table)
+          test: /\.(woff2?|ttf|eot|svg|png|jpe?g|gif)$/,
+          type: 'asset/resource',
         },
       ],
     },
     resolve: {
       alias: {
         'vue$': 'vue/dist/vue.esm.js',
-        //'bootstrap-vue$': 'bootstrap-vue/src/index.js'
       },
-      extensions: ['*', '.js', '.vue', '.json']
+      extensions: ['.js', '.json'],
     },
   }
-
