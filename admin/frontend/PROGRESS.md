@@ -53,11 +53,22 @@
 - [x] ModalShell на reka-ui Dialog (фокус-ловушка, Esc, ARIA, scroll-lock)
 - [x] Персист фильтров (localStorage — в useUsers)
 - [x] Прогон флоу через CDP: add / config / revoke / rotate / ccd — ок
-- [ ] Столбец трафика за сессию (`api/user/statistic`)
-- [ ] MetricStrip: живые данные (трафик)
-- [ ] a11y добивка: aria-labels на иконочных кнопках, фокус-возврат
-- [ ] Финальный прогон всех флоу + CI-smoke зелёный + размер бандла
-- [ ] PR frontend-v3 → master (снять draft)
+- [x] Столбец трафика за сессию (`api/user/statistic`) + поллинг 15с
+- [x] MetricStrip: живые данные (суммарный трафик + онлайн)
+- [x] a11y: aria-hidden на svg, aria-label на +/✕, фокус входит в модалку (reka-ui)
+- [x] Прогон через nginx+Basic Auth (headless CDP с Authorization) — рендерится, API 200
+- [x] CI-smoke зелёный на всех коммитах ветки; бандл 169 kB / 60 kB gzip
+- [x] PR #5 frontend-v3 → master — draft снят
+
+## Осталось / проверить в реальном деплое
+
+- цифры трафика в столбце — локально всегда «—» (никто не подключён);
+  проверить с реальным OpenVPN-клиентом
+- Basic Auth: браузер сам шлёт Authorization в fetch после ввода в prompt nginx —
+  подтверждено эмуляцией, но стоит глянуть вживую
+- при желании: self-host шрифтов IBM Plex вместо Google Fonts (сейчас внешняя
+  зависимость на fonts.googleapis.com)
+- вкладка Metrics (Grafana kiosk iframe) — не делал, решается вместе с судьбой Grafana
 
 ## Заметки / решения
 
