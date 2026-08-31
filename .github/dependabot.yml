@@ -1,0 +1,50 @@
+version: 2
+
+updates:
+  # Go-модули панели ovpn-admin (admin/go.mod)
+  - package-ecosystem: "gomod"
+    directory: "/admin"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      # minor/patch — одним PR; major по-прежнему отдельными
+      go-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # k8s-режим ovpn-admin в docker-compose-развёртывании не используется,
+      # а каждый бамп client-go/apimachinery форсит скачок версии Go в go.mod.
+      # Обновлять осознанно и вручную вместе с базовым образом golang.
+      - dependency-name: "k8s.io/*"
+
+  # Фронтенд-панель (admin/frontend/package.json)
+  - package-ecosystem: "npm"
+    directory: "/admin/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      npm-all:
+        patterns: ["*"]
+
+  # Базовые образы Dockerfile'ов + образы сервисов в docker-compose.yaml
+  - package-ecosystem: "docker"
+    directories:
+      - "/"          # docker-compose.yaml (prometheus, grafana, node-exporter)
+      - "/admin"     # Dockerfile.openvpn, Dockerfile.ovpn-admin
+      - "/nginx"     # Dockerfile
+    schedule:
+      interval: "weekly"
+    groups:
+      docker-all:
+        patterns: ["*"]
+
+  # Экшены в .github/workflows/
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions-all:
+        patterns: ["*"]
