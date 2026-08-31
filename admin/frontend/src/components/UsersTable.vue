@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import StatusPill from './StatusPill.vue'
+import { formatBytes } from '@/utils/format'
+import type { Traffic } from '@/composables/useTraffic'
 import type { OpenvpnClient, OvpnModule, ServerRole } from '@/api/types'
 
 export type RowAction =
@@ -18,6 +20,7 @@ const props = defineProps<{
   loading: boolean
   role: ServerRole
   modules: OvpnModule[]
+  traffic: Record<string, Traffic>
 }>()
 const emit = defineEmits<{ action: [action: RowAction, username: string] }>()
 
@@ -107,7 +110,13 @@ const isEmpty = computed(() => !props.loading && props.rows.length === 0)
               :expiring-soon="expiringSoon(row)"
             />
           </td>
-          <td><span class="traffic none">&mdash;</span></td>
+          <td>
+            <span v-if="traffic[row.Identity] && traffic[row.Identity].rx + traffic[row.Identity].tx > 0" class="traffic">
+              <span><span class="ar">&#8595;</span>{{ formatBytes(traffic[row.Identity].rx) }}</span>
+              <span><span class="ar">&#8593;</span>{{ formatBytes(traffic[row.Identity].tx) }}</span>
+            </span>
+            <span v-else class="traffic none">&mdash;</span>
+          </td>
           <td>
             <span class="when" :class="{ soon: expiringSoon(row) }">{{ fmtDate(row.ExpirationDate) }}</span>
           </td>
@@ -196,9 +205,19 @@ tr.s-crit td:first-child {
   font-weight: 500;
   color: var(--text);
 }
-.traffic.none {
+.traffic {
+  display: inline-flex;
+  gap: 12px;
   font-family: var(--mono);
   font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+.traffic .ar {
+  color: var(--text-faint);
+  margin-right: 3px;
+}
+.traffic.none {
   color: var(--text-faint);
 }
 .when {
