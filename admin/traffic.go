@@ -31,7 +31,10 @@ var (
 	}, []string{"client"})
 )
 
-const statBucket = "traffic_monthly"
+const (
+	statBucket     = "traffic_monthly"
+	lastSeenBucket = "last_seen"
+)
 
 type monthBytes struct {
 	Rx uint64 `json:"rx"`
@@ -39,13 +42,14 @@ type monthBytes struct {
 }
 
 type statStore struct {
-	db   *bolt.DB
-	mu   sync.Mutex
-	seen map[string]monthBytes // последние сессионные счётчики по каждому активному CN
+	db       *bolt.DB
+	mu       sync.Mutex
+	seen     map[string]monthBytes // последние сессионные счётчики по каждому активному CN
+	lastSeen map[string]int64      // unix-время последнего появления онлайн по CN
 }
 
 func newStatStore(path string) *statStore {
-	s := &statStore{seen: make(map[string]monthBytes)}
+	s := &statStore{seen: make(map[string]monthBytes), lastSeen: make(map[string]int64)}
 	if path == "" {
 		return s
 	}
@@ -55,7 +59,10 @@ func newStatStore(path string) *statStore {
 		return s
 	}
 	if err := db.Update(func(tx *bolt.Tx) error {
-		_, e := tx.CreateBucketIfNotExists([]byte(statBucket))
+		if _, e := tx.CreateBucketIfNotExists([]byte(statBucket)); e != nil {
+			return e
+		}
+		_, e := tx.CreateBucketIfNotExists([]byte(lastSeenBucket))
 		return e
 	}); err != nil {
 		log.Warnf("statistic: init bucket: %v", err)
@@ -63,8 +70,29 @@ func newStatStore(path string) *statStore {
 		return s
 	}
 	s.db = db
+	// поднять last_seen из bbolt в память
+	_ = db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(lastSeenBucket))
+		return b.ForEach(func(k, v []byte) error {
+			var ts int64
+			if json.Unmarshal(v, &ts) == nil {
+				s.lastSeen[string(k)] = ts
+			}
+			return nil
+		})
+	})
 	log.Infof("statistic: хранилище трафика — %s", path)
 	return s
+}
+
+// lastSeenOf — unix-время последнего появления клиента онлайн (0 — не видели)
+func (s *statStore) lastSeenOf(cn string) int64 {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastSeen[cn]
 }
 
 func currentMonth() string { return time.Now().UTC().Format("2006-01") }
@@ -77,11 +105,19 @@ func (s *statStore) record(active []clientStatus) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	now := time.Now().Unix()
 	online := make(map[string]bool, len(active))
 	for _, c := range active {
 		rx, _ := strconv.ParseUint(c.BytesReceived, 10, 64)
 		tx, _ := strconv.ParseUint(c.BytesSent, 10, 64)
 		online[c.CommonName] = true
+		s.lastSeen[c.CommonName] = now
+		if s.db != nil {
+			enc, _ := json.Marshal(now)
+			_ = s.db.Update(func(tx *bolt.Tx) error {
+				return tx.Bucket([]byte(lastSeenBucket)).Put([]byte(c.CommonName), enc)
+			})
+		}
 
 		prev, known := s.seen[c.CommonName]
 		var dRx, dTx uint64

@@ -229,6 +229,7 @@ type OpenvpnClient struct {
 	RevocationDate   string `json:"RevocationDate"`
 	ConnectionStatus string `json:"ConnectionStatus"`
 	Connections      int    `json:"Connections"`
+	LastSeen         int64  `json:"LastSeen"` // unix, последнее появление онлайн; 0 — не видели
 }
 
 type ccdRoute struct {
@@ -443,7 +444,11 @@ func (oAdmin *OvpnAdmin) serverSettingsHandler(w http.ResponseWriter, r *http.Re
 	if enabledModulesErr != nil {
 		log.Errorln(enabledModulesErr)
 	}
-	fmt.Fprintf(w, `{"status":"ok", "serverRole": "%s", "modules": %s }`, oAdmin.role, string(enabledModules))
+	caDays := int(time.Until(getOvpnCaCertExpireDate()).Hours() / 24)
+	certDays := int(time.Until(getOvpnServerCertExpireDate()).Hours() / 24)
+	fmt.Fprintf(w,
+		`{"status":"ok", "serverRole": "%s", "modules": %s, "caExpireDays": %d, "serverCertExpireDays": %d }`,
+		oAdmin.role, string(enabledModules), caDays, certDays)
 }
 
 func (oAdmin *OvpnAdmin) lastSyncTimeHandler(w http.ResponseWriter, r *http.Request) {
@@ -469,7 +474,10 @@ func (oAdmin *OvpnAdmin) downloadCertsHandler(w http.ResponseWriter, r *http.Req
 	_ = r.ParseForm()
 	token := r.Form.Get("token")
 
-	if token != oAdmin.masterSyncToken {
+	// token обязателен только для межсерверной синхронизации (slave тянет с master).
+	// Запрос из UI приходит уже за Basic Auth реверс-прокси — токен не требуем,
+	// но если он передан и неверный — отказываем.
+	if token != "" && token != oAdmin.masterSyncToken {
 		http.Error(w, `{"status":"error"}`, http.StatusForbidden)
 		return
 	}
@@ -990,6 +998,7 @@ func (oAdmin *OvpnAdmin) usersList() []OpenvpnClient {
 				}
 			}
 			ovpnClient.Connections = 0
+			ovpnClient.LastSeen = oAdmin.stat.lastSeenOf(line.Identity)
 
 			userConnected, userConnectedTo := isUserConnected(line.Identity, oAdmin.activeClients)
 			if userConnected {
@@ -1667,21 +1676,29 @@ func getOvpnServerHostsFromKubeApi() ([]OpenvpnServer, error) {
 }
 
 func getOvpnCaCertExpireDate() time.Time {
-	caCertPath := *easyrsaDirPath + "/pki/ca.crt"
-	caCert, err := ioutil.ReadFile(caCertPath)
-	if err != nil {
-		log.Errorf("error read file %s: %s", caCertPath, err.Error())
-	}
+	return certNotAfter(*easyrsaDirPath+"/pki/ca.crt", "ca.crt")
+}
 
-	certPem, _ := pem.Decode(caCert)
-	certPemBytes := certPem.Bytes
+func getOvpnServerCertExpireDate() time.Time {
+	return certNotAfter(*easyrsaDirPath+"/pki/issued/server.crt", "server.crt")
+}
 
-	cert, err := x509.ParseCertificate(certPemBytes)
+func certNotAfter(path, name string) time.Time {
+	raw, err := ioutil.ReadFile(path)
 	if err != nil {
-		log.Errorf("error parse certificate ca.crt: %s", err.Error())
+		log.Errorf("error read file %s: %s", path, err.Error())
 		return time.Now()
 	}
-
+	certPem, _ := pem.Decode(raw)
+	if certPem == nil {
+		log.Errorf("error decode pem %s", name)
+		return time.Now()
+	}
+	cert, err := x509.ParseCertificate(certPem.Bytes)
+	if err != nil {
+		log.Errorf("error parse certificate %s: %s", name, err.Error())
+		return time.Now()
+	}
 	return cert.NotAfter
 }
 
