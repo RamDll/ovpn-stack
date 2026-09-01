@@ -67,11 +67,13 @@ services:
       OVPN_INDEX_PATH: "/mnt/easyrsa/pki/index.txt"
       OVPN_AUTH: "false"
       OVPN_AUTH_DB_PATH: "/mnt/easyrsa/pki/users.db"
+      OVPN_STAT_DB: "/mnt/stat/traffic.db"
       LOG_LEVEL: "debug"
     network_mode: "service:openvpn"
     volumes:
       - ./data/easyrsa:/mnt/easyrsa
       - ./data/ccd:/mnt/ccd
+      - ./data/stat:/mnt/stat
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
       interval: 30s
