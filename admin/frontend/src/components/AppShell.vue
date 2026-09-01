@@ -17,6 +17,7 @@ function toggleLocale() {
 
 <template>
   <header class="topbar">
+    <div class="topbar-inner">
     <div class="brand">
       <span class="glyph">ov</span>
       <span class="name">ovpn&#8209;admin</span>
@@ -53,6 +54,7 @@ function toggleLocale() {
       <span class="dot" />
       {{ role }}
     </span>
+    </div>
   </header>
 
   <main class="wrap">
@@ -62,16 +64,21 @@ function toggleLocale() {
 
 <style scoped>
 .topbar {
-  display: flex;
-  align-items: center;
-  gap: 20px;
   height: 58px;
-  padding: 0 22px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   z-index: 20;
+}
+.topbar-inner {
+  max-width: 1360px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 22px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
 }
 .brand {
   display: flex;
@@ -176,7 +183,7 @@ function toggleLocale() {
   padding: 26px 22px 64px;
 }
 @media (max-width: 560px) {
-  .topbar {
+  .topbar-inner {
     gap: 12px;
     padding: 0 14px;
   }

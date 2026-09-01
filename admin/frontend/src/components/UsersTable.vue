@@ -52,6 +52,10 @@ function fmtTime(s: string): string {
   const parts = s.split(' ')
   return parts.length > 1 ? parts[1].slice(0, 5) : s
 }
+function cleanAddr(s: string): string {
+  // OpenVPN отдаёт "udp4:1.2.3.4:56789" — оставляем только адрес
+  return s.replace(/^(udp|tcp)[46]?:/i, '').replace(/:\d+$/, '')
+}
 function rowClass(row: OpenvpnClient): string {
   if (row.AccountStatus === 'Revoked' || row.AccountStatus === 'Expired') return 's-crit'
   if (row.ConnectionStatus === 'Connected') return 's-ok'
@@ -89,7 +93,7 @@ function subline(row: OpenvpnClient): string {
     const bits = []
     if (s.virtualAddress) bits.push(s.virtualAddress)
     if (s.connectedSince) bits.push(t('table.onlineSince', { time: fmtTime(s.connectedSince) }))
-    if (s.realAddress) bits.push(t('table.from', { ip: s.realAddress }))
+    if (s.realAddress) bits.push(t('table.from', { ip: cleanAddr(s.realAddress) }))
     return bits.join(' · ')
   }
   if (row.ExpirationDate) return t('table.expiresOn', { date: fmtDate(row.ExpirationDate) })
