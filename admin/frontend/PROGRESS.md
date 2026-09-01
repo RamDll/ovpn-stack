@@ -89,3 +89,23 @@
   тестировать фронт против прямого порта ovpn-admin (8080, без nginx).
 - Дев-цикл: `docker run --network host node:22-alpine npm run dev` (Vite proxy
   `/api` → `127.0.0.1:8080`), нужен поднятый стек с проброшенным `127.0.0.1:8080:8080`.
+
+---
+
+# panel-iter2 (по итогам тестирования на боевом)
+
+- [x] P0: скачивание конфига `application/octet-stream` (не `.ovpn.txt`)
+- [x] P0: тулбар в колонку на `max-width: 560px` (кнопка Add user не уезжает)
+- [x] P1: i18n `vue-i18n` — ru (дефолт) / en, локали в `src/locales/`, тумблер в шапке
+- [x] P1: светлая тема — токены `:root[data-theme="light"]` + `prefers-color-scheme`,
+       `useTheme`, тумблер солнце/луна в шапке
+- [x] P1: Actions → одна кнопка `⋯` + `DropdownMenu` (reka-ui)
+- [x] P1: убран тумблер «Hide revoked» (Toolbar + useUsers)
+- [x] P1: инфо под именем — онлайн: `VPN-адрес · с HH:MM · извне <real>`;
+       офлайн: `истекает <дата>` (жёлтым если <30д). useTraffic расширен до Session
+- [x] P1: навигация Users / Statistics (useView, без роутера), StatisticsView-заглушка
+- [ ] P2: бэкенд — bbolt-стор месячного трафика, `/api/statistic/*`,
+       новые Prometheus-счётчики `ovpn_client_traffic_*_total`
+- [ ] P2: StatisticsView — сводка + график по месяцам + ссылка в Grafana
+- [ ] P2: Grafana-дашборд «Traffic by month» из новых счётчиков
+- [ ] финальный прогон + CI + PR

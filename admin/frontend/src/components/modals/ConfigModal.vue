@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import ModalShell from '../ModalShell.vue'
 import { ovpn } from '@/api/ovpn'
 import { useToasts } from '@/composables/useToasts'
@@ -7,6 +8,7 @@ import { useToasts } from '@/composables/useToasts'
 const props = defineProps<{ open: boolean; username: string }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
+const { t } = useI18n()
 const toasts = useToasts()
 const config = ref('')
 const loading = ref(false)
@@ -33,9 +35,9 @@ watch(
 async function copy() {
   try {
     await navigator.clipboard.writeText(config.value)
-    toasts.success('Конфиг скопирован')
+    toasts.success(t('config.copied'))
   } catch {
-    toasts.error('Буфер обмена недоступен')
+    toasts.error(t('config.clipboardError'))
   }
 }
 
@@ -57,19 +59,19 @@ function download() {
 <template>
   <ModalShell
     :open="open"
-    title="Конфигурация клиента"
+    :title="t('config.title')"
     :description="username"
     wide
     @update:open="emit('update:open', $event)"
   >
-    <p v-if="error" class="alert alert-error">{{ error }}</p>
-    <pre v-else class="config">{{ loading ? 'Загрузка…' : config }}</pre>
+    <p v-if="error" class="alert alert-error">{{ t('config.loadError') }}: {{ error }}</p>
+    <pre v-else class="config">{{ loading ? t('common.loading') : config }}</pre>
 
     <template #footer>
-      <button class="btn btn-ghost" type="button" @click="emit('update:open', false)">Закрыть</button>
-      <button class="btn btn-ghost" type="button" :disabled="!config" @click="copy">Копировать</button>
+      <button class="btn btn-ghost" type="button" @click="emit('update:open', false)">{{ t('common.close') }}</button>
+      <button class="btn btn-ghost" type="button" :disabled="!config" @click="copy">{{ t('config.copy') }}</button>
       <button class="btn btn-primary" type="button" :disabled="!config" @click="download">
-        Скачать .ovpn
+        {{ t('config.download') }}
       </button>
     </template>
   </ModalShell>

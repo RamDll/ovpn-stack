@@ -1,6 +1,7 @@
 import { ovpn } from '@/api/ovpn'
 import { useUsers } from './useUsers'
 import { useToasts } from './useToasts'
+import { t } from '@/i18n'
 
 /**
  * Мутации над пользователями: вызов API + тост об успехе + обновление списка.
@@ -10,36 +11,36 @@ export function useUserActions() {
   const { refresh } = useUsers()
   const toasts = useToasts()
 
-  async function run<T>(fn: () => Promise<T>, okTitle: string): Promise<T> {
+  async function run<T>(fn: () => Promise<T>, okKey: string, name: string): Promise<T> {
     const result = await fn()
     await refresh()
-    toasts.success(okTitle)
+    toasts.success(t(okKey, { name }))
     return result
   }
 
   return {
     create: (username: string, password: string) =>
-      run(() => ovpn.createUser(username, password), `Пользователь ${username} создан`),
+      run(() => ovpn.createUser(username, password), 'toast.userCreated', username),
 
     changePassword: (username: string, password: string) =>
-      run(() => ovpn.changePassword(username, password), `Пароль ${username} изменён`),
+      run(() => ovpn.changePassword(username, password), 'toast.passwordChanged', username),
 
     rotate: (username: string, password: string) =>
-      run(() => ovpn.rotateUser(username, password), `Сертификаты ${username} перевыпущены`),
+      run(() => ovpn.rotateUser(username, password), 'toast.certRotated', username),
 
     remove: (username: string) =>
-      run(() => ovpn.deleteUser(username), `Пользователь ${username} удалён`),
+      run(() => ovpn.deleteUser(username), 'toast.userDeleted', username),
 
     revoke: (username: string) =>
-      run(() => ovpn.revokeUser(username), `Пользователь ${username} отозван`),
+      run(() => ovpn.revokeUser(username), 'toast.userRevoked', username),
 
     unrevoke: (username: string) =>
-      run(() => ovpn.unrevokeUser(username), `Пользователь ${username} восстановлен`),
+      run(() => ovpn.unrevokeUser(username), 'toast.userUnrevoked', username),
 
     disconnect: (username: string) =>
-      run(() => ovpn.disconnectUser(username), `Сессия ${username} разорвана`),
+      run(() => ovpn.disconnectUser(username), 'toast.sessionDropped', username),
 
     applyCcd: (username: string, ccd: Parameters<typeof ovpn.applyCcd>[0]) =>
-      run(() => ovpn.applyCcd(ccd), `Маршруты ${username} применены`),
+      run(() => ovpn.applyCcd(ccd), 'toast.ccdApplied', username),
   }
 }
