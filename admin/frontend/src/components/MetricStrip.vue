@@ -24,7 +24,6 @@ const { t } = useI18n()
     <div class="metric">
       <div class="k">{{ t('metrics.traffic') }}</div>
       <div class="v traffic-v">{{ traffic }}</div>
-      <div class="delta">{{ t('metrics.online', { n: connected }) }}</div>
     </div>
   </div>
 </template>

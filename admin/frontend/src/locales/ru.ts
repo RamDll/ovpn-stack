@@ -52,6 +52,7 @@ export default {
     onlineSince: 'с {time}',
     from: 'извне {ip}',
     expiresOn: 'истекает {date}',
+    revokedOn: 'отозван {date}',
   },
   status: {
     connected: 'Онлайн',
