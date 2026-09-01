@@ -1,5 +1,12 @@
 import { apiGet, apiForm, apiJson } from './client'
-import type { OpenvpnClient, ServerSettings, Ccd, ClientStatus, Statistic } from './types'
+import type {
+  OpenvpnClient,
+  ServerSettings,
+  Ccd,
+  ClientStatus,
+  Statistic,
+  SystemStats,
+} from './types'
 
 export const ovpn = {
   listUsers: () => apiGet<OpenvpnClient[]>('api/users/list'),
@@ -7,6 +14,8 @@ export const ovpn = {
   statistic: () => apiGet<Statistic>('api/statistic'),
 
   serverSettings: () => apiGet<ServerSettings>('api/server/settings'),
+
+  systemStats: () => apiGet<SystemStats>('api/server/stats'),
 
   lastSuccessfulSync: () => apiGet<string>('api/sync/last/successful'),
 

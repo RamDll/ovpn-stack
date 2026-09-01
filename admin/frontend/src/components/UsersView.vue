@@ -13,6 +13,7 @@ import CcdModal from './modals/CcdModal.vue'
 import { useI18n } from 'vue-i18n'
 import { useUsers } from '@/composables/useUsers'
 import { useServerSettings } from '@/composables/useServerSettings'
+import { useServerStats } from '@/composables/useServerStats'
 import { useTraffic } from '@/composables/useTraffic'
 import { formatBytes } from '@/utils/format'
 
@@ -22,6 +23,7 @@ const {
   filterOnline, filterRevoked, sortKey, sortDir, toggleSort,
 } = useUsers()
 const { role, modules, isMaster, isSlave, hasModule } = useServerSettings()
+const { stats: sys, refresh: refreshSys } = useServerStats()
 
 const anyFilter = computed(
   () => !!search.value.trim() || filterOnline.value || filterRevoked.value,
@@ -36,9 +38,11 @@ watch(connectedNames, (names) => void refreshTraffic(names), { immediate: true }
 
 let poll: number | undefined
 onMounted(() => {
+  void refreshSys()
   poll = window.setInterval(() => {
     void refresh({ silent: true })
     void refreshTraffic(connectedNames.value)
+    void refreshSys()
   }, 15_000)
 })
 onBeforeUnmount(() => window.clearInterval(poll))
@@ -88,10 +92,8 @@ function onAction(action: RowAction, username: string) {
 
   <MetricStrip
     :connected="stats.connected"
-    :total="stats.total"
-    :revoked="stats.revoked"
-    :expired="stats.expired"
     :traffic="trafficLabel"
+    :sys="sys"
   />
 
   <p v-if="error" class="load-error">{{ t('users.loadError', { error }) }}</p>
