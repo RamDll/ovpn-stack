@@ -151,4 +151,24 @@ const emit = defineEmits<{
   color: var(--text);
   background: var(--surface-2);
 }
+
+/* узкий экран (телефон вертикально): поиск во всю ширину, кнопки переносятся под него */
+@media (max-width: 560px) {
+  .toolbar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .search {
+    max-width: none;
+    flex-basis: 100%;
+  }
+  .spacer {
+    display: none;
+  }
+  .btn,
+  .toggle {
+    flex: 1;
+    justify-content: center;
+  }
+}
 </style>

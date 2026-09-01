@@ -40,12 +40,17 @@ async function copy() {
 }
 
 function download() {
-  const blob = new Blob([config.value], { type: 'text/plain' })
+  // octet-stream, а не text/plain — иначе мобильные браузеры и Firefox
+  // дописывают файлу «.txt»
+  const blob = new Blob([config.value], { type: 'application/octet-stream' })
   const link = document.createElement('a')
   link.href = URL.createObjectURL(blob)
   link.download = `${props.username}.ovpn`
+  link.rel = 'noopener'
+  document.body.appendChild(link)
   link.click()
-  URL.revokeObjectURL(link.href)
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000)
 }
 </script>
 
