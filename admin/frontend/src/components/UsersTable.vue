@@ -242,7 +242,9 @@ tr.s-crit td:first-child {
 .identity {
   display: block;
   font-family: var(--mono);
-  font-weight: 500;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--text);
 }
 .sub {
@@ -250,7 +252,7 @@ tr.s-crit td:first-child {
   color: var(--text-faint);
   font-size: var(--fs-xs);
   font-family: var(--mono);
-  margin-top: 3px;
+  margin-top: 4px;
 }
 .sub.soon {
   color: var(--warn);
