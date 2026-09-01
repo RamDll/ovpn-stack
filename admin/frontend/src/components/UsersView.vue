@@ -17,8 +17,15 @@ import { useTraffic } from '@/composables/useTraffic'
 import { formatBytes } from '@/utils/format'
 
 const { t } = useI18n()
-const { filtered, stats, search, loading, error, refresh, users } = useUsers()
+const {
+  filtered, stats, search, loading, error, refresh, users,
+  filterOnline, filterRevoked, sortKey, sortDir, toggleSort,
+} = useUsers()
 const { role, modules, isMaster, isSlave, hasModule } = useServerSettings()
+
+const anyFilter = computed(
+  () => !!search.value.trim() || filterOnline.value || filterRevoked.value,
+)
 const { byUser: trafficByUser, total: trafficTotal, refresh: refreshTraffic } = useTraffic()
 
 const connectedNames = computed(() =>
@@ -93,7 +100,12 @@ function onAction(action: RowAction, username: string) {
     <Toolbar
       :search="search"
       :can-create="isMaster"
+      :filter-online="filterOnline"
+      :filter-revoked="filterRevoked"
+      :revoked-count="stats.revoked"
       @update:search="search = $event"
+      @update:filter-online="filterOnline = $event"
+      @update:filter-revoked="filterRevoked = $event"
       @refresh="refresh"
       @add="addOpen = true"
     />
@@ -103,7 +115,11 @@ function onAction(action: RowAction, username: string) {
       :role="role"
       :modules="modules"
       :traffic="trafficByUser"
+      :sort-key="sortKey"
+      :sort-dir="sortDir"
+      :filtered="anyFilter"
       @action="onAction"
+      @sort="toggleSort"
     />
   </div>
 

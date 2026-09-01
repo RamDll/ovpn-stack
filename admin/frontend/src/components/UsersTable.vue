@@ -9,8 +9,9 @@ import {
   DropdownMenuItem,
 } from 'reka-ui'
 import StatusPill from './StatusPill.vue'
-import { formatBytes } from '@/utils/format'
+import { formatBytes, fmtAgo, fmtDuration } from '@/utils/format'
 import type { Session } from '@/composables/useTraffic'
+import type { SortKey, SortDir } from '@/composables/useUsers'
 import type { OpenvpnClient, OvpnModule, ServerRole } from '@/api/types'
 
 export type RowAction =
@@ -29,9 +30,15 @@ const props = defineProps<{
   role: ServerRole
   modules: OvpnModule[]
   traffic: Record<string, Session>
+  sortKey: SortKey
+  sortDir: SortDir
+  filtered: boolean
 }>()
-const emit = defineEmits<{ action: [action: RowAction, username: string] }>()
-const { t } = useI18n()
+const emit = defineEmits<{
+  action: [action: RowAction, username: string]
+  sort: [key: SortKey]
+}>()
+const { t, locale } = useI18n()
 
 const DAY = 86_400_000
 
@@ -48,12 +55,7 @@ function expiringSoon(row: OpenvpnClient): boolean {
 function fmtDate(s: string): string {
   return s ? s.split(' ')[0] : '—'
 }
-function fmtTime(s: string): string {
-  const parts = s.split(' ')
-  return parts.length > 1 ? parts[1].slice(0, 5) : s
-}
 function cleanAddr(s: string): string {
-  // OpenVPN отдаёт "udp4:1.2.3.4:56789" — оставляем только адрес
   return s.replace(/^(udp|tcp)[46]?:/i, '').replace(/:\d+$/, '')
 }
 function rowClass(row: OpenvpnClient): string {
@@ -92,8 +94,11 @@ function subline(row: OpenvpnClient): string {
   const s = props.traffic[row.Identity]
   if (row.ConnectionStatus === 'Connected' && s) {
     if (s.virtualAddress) bits.push(s.virtualAddress)
-    if (s.connectedSince) bits.push(t('table.onlineSince', { time: fmtTime(s.connectedSince) }))
+    if (s.connectedSince) bits.push(t('table.onlineFor', { dur: fmtDuration(s.connectedSince, locale.value) }))
     if (s.realAddress) bits.push(t('table.from', { ip: cleanAddr(s.realAddress) }))
+    if (s.rx + s.tx > 0) bits.push(`↓${formatBytes(s.rx)} ↑${formatBytes(s.tx)}`)
+  } else if (row.LastSeen > 0) {
+    bits.push(t('table.lastSeen', { ago: fmtAgo(row.LastSeen, locale.value) }))
   }
   if (row.AccountStatus === 'Revoked' && row.RevocationDate) {
     bits.push(t('table.revokedOn', { date: fmtDate(row.RevocationDate) }))
@@ -104,6 +109,10 @@ function subline(row: OpenvpnClient): string {
 }
 
 const isEmpty = computed(() => !props.loading && props.rows.length === 0)
+function arrow(key: SortKey): string {
+  if (props.sortKey !== key) return ''
+  return props.sortDir === 'asc' ? '↑' : '↓'
+}
 </script>
 
 <template>
@@ -111,22 +120,23 @@ const isEmpty = computed(() => !props.loading && props.rows.length === 0)
     <table class="users">
       <thead>
         <tr>
-          <th class="lineno">#</th>
-          <th>{{ t('table.name') }}</th>
-          <th>{{ t('table.status') }}</th>
-          <th>{{ t('table.trafficSession') }}</th>
+          <th class="sortable" @click="emit('sort', 'name')">
+            {{ t('table.name') }} <span class="arr">{{ arrow('name') }}</span>
+          </th>
+          <th class="sortable" @click="emit('sort', 'status')">
+            {{ t('table.status') }} <span class="arr">{{ arrow('status') }}</span>
+          </th>
           <th class="right">{{ t('table.actions') }}</th>
         </tr>
       </thead>
       <tbody>
         <tr v-if="loading">
-          <td colspan="5" class="state">{{ t('common.loading') }}</td>
+          <td colspan="3" class="state">{{ t('common.loading') }}</td>
         </tr>
         <tr v-else-if="isEmpty">
-          <td colspan="5" class="state">{{ t('users.empty') }}</td>
+          <td colspan="3" class="state">{{ filtered ? t('users.emptyFiltered') : t('users.empty') }}</td>
         </tr>
-        <tr v-for="(row, i) in rows" v-else :key="row.Identity" :class="rowClass(row)">
-          <td class="lineno">{{ i + 1 }}</td>
+        <tr v-for="row in rows" v-else :key="row.Identity" :class="rowClass(row)">
           <td>
             <span class="identity">{{ row.Identity }}</span>
             <span v-if="subline(row)" class="sub" :class="{ soon: expiringSoon(row) }">{{ subline(row) }}</span>
@@ -137,16 +147,6 @@ const isEmpty = computed(() => !props.loading && props.rows.length === 0)
               :connection="row.ConnectionStatus"
               :expiring-soon="expiringSoon(row)"
             />
-          </td>
-          <td>
-            <span
-              v-if="traffic[row.Identity] && traffic[row.Identity].rx + traffic[row.Identity].tx > 0"
-              class="traffic"
-            >
-              <span><span class="ar">&#8595;</span>{{ formatBytes(traffic[row.Identity].rx) }}</span>
-              <span><span class="ar">&#8593;</span>{{ formatBytes(traffic[row.Identity].tx) }}</span>
-            </span>
-            <span v-else class="traffic none">&mdash;</span>
           </td>
           <td>
             <div class="row-actions">
@@ -182,7 +182,7 @@ const isEmpty = computed(() => !props.loading && props.rows.length === 0)
   width: 100%;
   border-collapse: collapse;
   font-size: var(--fs-sm);
-  min-width: 640px;
+  min-width: 460px;
 }
 .users thead th {
   text-align: left;
@@ -194,9 +194,20 @@ const isEmpty = computed(() => !props.loading && props.rows.length === 0)
   font-weight: 600;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+  user-select: none;
 }
 .users thead th.right {
   text-align: right;
+}
+.users thead th.sortable {
+  cursor: pointer;
+}
+.users thead th.sortable:hover {
+  color: var(--text-dim);
+}
+.arr {
+  color: var(--accent);
+  font-weight: 700;
 }
 .users tbody td {
   padding: 12px 16px;
@@ -228,12 +239,6 @@ tr.s-crit td:first-child {
   font-family: var(--mono);
   font-size: var(--fs-xs);
 }
-.lineno {
-  color: var(--text-faint);
-  font-family: var(--mono);
-  font-size: var(--fs-xs);
-  width: 34px;
-}
 .identity {
   display: block;
   font-family: var(--mono);
@@ -249,21 +254,6 @@ tr.s-crit td:first-child {
 }
 .sub.soon {
   color: var(--warn);
-}
-.traffic {
-  display: inline-flex;
-  gap: 12px;
-  font-family: var(--mono);
-  font-size: var(--fs-xs);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-dim);
-}
-.traffic .ar {
-  color: var(--text-faint);
-  margin-right: 3px;
-}
-.traffic.none {
-  color: var(--text-faint);
 }
 .row-actions {
   display: flex;
@@ -292,7 +282,6 @@ tr.s-crit td:first-child {
 </style>
 
 <style>
-/* меню в портале — не scoped */
 .menu {
   min-width: 168px;
   background: var(--surface);

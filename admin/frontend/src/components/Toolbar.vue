@@ -1,13 +1,24 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import { apiUrl } from '@/api/client'
 
-defineProps<{ search: string; canCreate: boolean }>()
+defineProps<{
+  search: string
+  canCreate: boolean
+  filterOnline: boolean
+  filterRevoked: boolean
+  revokedCount: number
+}>()
 const emit = defineEmits<{
   'update:search': [value: string]
+  'update:filterOnline': [value: boolean]
+  'update:filterRevoked': [value: boolean]
   add: []
   refresh: []
 }>()
 const { t } = useI18n()
+
+const downloadAllUrl = apiUrl('api/data/certs/download')
 </script>
 
 <template>
@@ -25,8 +36,29 @@ const { t } = useI18n()
       />
     </label>
 
+    <button
+      class="chip"
+      type="button"
+      :class="{ on: filterOnline }"
+      :aria-pressed="filterOnline"
+      @click="emit('update:filterOnline', !filterOnline)"
+    >
+      <span class="dot" /> {{ t('users.filterOnline') }}
+    </button>
+    <button
+      v-if="revokedCount > 0"
+      class="chip"
+      type="button"
+      :class="{ on: filterRevoked }"
+      :aria-pressed="filterRevoked"
+      @click="emit('update:filterRevoked', !filterRevoked)"
+    >
+      {{ t('users.filterRevoked') }} · {{ revokedCount }}
+    </button>
+
     <span class="spacer" />
 
+    <a class="btn btn-ghost" :href="downloadAllUrl">{{ t('users.downloadAll') }}</a>
     <button class="btn btn-ghost" type="button" @click="emit('refresh')">{{ t('common.refresh') }}</button>
 
     <button v-if="canCreate" class="btn btn-primary" type="button" @click="emit('add')">
@@ -42,13 +74,13 @@ const { t } = useI18n()
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 13px 14px;
   border-bottom: 1px solid var(--border);
 }
 .search {
   flex: 1;
-  max-width: 340px;
+  max-width: 300px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -67,6 +99,37 @@ const { t } = useI18n()
 }
 .search input::placeholder {
   color: var(--text-faint);
+}
+.chip {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 11px;
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.chip:hover {
+  color: var(--text);
+}
+.chip.on {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.chip .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
 }
 .spacer {
   flex: 1;
@@ -102,14 +165,14 @@ const { t } = useI18n()
   background: var(--surface-2);
 }
 
-@media (max-width: 560px) {
+@media (max-width: 640px) {
   .toolbar {
     flex-wrap: wrap;
-    gap: 10px;
   }
   .search {
     max-width: none;
     flex-basis: 100%;
+    order: -1;
   }
   .spacer {
     display: none;

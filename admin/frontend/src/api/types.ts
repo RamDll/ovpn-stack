@@ -11,12 +11,16 @@ export interface OpenvpnClient {
   RevocationDate: string
   ConnectionStatus: ConnectionStatus
   Connections: number
+  /** unix-время последнего появления онлайн; 0 — не видели */
+  LastSeen: number
 }
 
 /** Ответ `api/server/settings`. */
 export interface ServerSettings {
   serverRole: ServerRole
   modules: OvpnModule[]
+  caExpireDays: number
+  serverCertExpireDays: number
 }
 
 export interface CcdRoute {

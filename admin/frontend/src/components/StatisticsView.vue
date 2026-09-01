@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ovpn } from '@/api/ovpn'
 import { formatBytes } from '@/utils/format'
+import ServerCard from './ServerCard.vue'
 import type { Statistic, MonthBytes } from '@/api/types'
 
 const { t } = useI18n()
@@ -109,6 +110,8 @@ function monthLabel(m: string) {
     <h1>{{ t('stats.title') }}</h1>
     <a class="grafana" href="./grafana/d/ovpn-traffic" target="_blank" rel="noopener">{{ t('stats.openGrafana') }} →</a>
   </div>
+
+  <ServerCard />
 
   <p v-if="error" class="load-error">{{ t('stats.loadError') }}: {{ error }}</p>
   <p v-else-if="loading" class="muted">{{ t('common.loading') }}</p>
