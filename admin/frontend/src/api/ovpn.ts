@@ -1,8 +1,10 @@
 import { apiGet, apiForm, apiJson } from './client'
-import type { OpenvpnClient, ServerSettings, Ccd, ClientStatus } from './types'
+import type { OpenvpnClient, ServerSettings, Ccd, ClientStatus, Statistic } from './types'
 
 export const ovpn = {
   listUsers: () => apiGet<OpenvpnClient[]>('api/users/list'),
+
+  statistic: () => apiGet<Statistic>('api/statistic'),
 
   serverSettings: () => apiGet<ServerSettings>('api/server/settings'),
 

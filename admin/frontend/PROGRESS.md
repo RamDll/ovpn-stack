@@ -104,8 +104,8 @@
 - [x] P1: инфо под именем — онлайн: `VPN-адрес · с HH:MM · извне <real>`;
        офлайн: `истекает <дата>` (жёлтым если <30д). useTraffic расширен до Session
 - [x] P1: навигация Users / Statistics (useView, без роутера), StatisticsView-заглушка
-- [ ] P2: бэкенд — bbolt-стор месячного трафика, `/api/statistic/*`,
+- [x] P2: бэкенд — bbolt-стор (admin/traffic.go), api/statistic, счётчики ovpn_client_traffic_{received,sent}_total, volume data/stat
        новые Prometheus-счётчики `ovpn_client_traffic_*_total`
-- [ ] P2: StatisticsView — сводка + график по месяцам + ссылка в Grafana
-- [ ] P2: Grafana-дашборд «Traffic by month» из новых счётчиков
+- [x] P2: StatisticsView — сводка (месяц/всё время/сессии) + столбики по месяцам + таблица по юзерам + ссылка в Grafana
+- [x] P2: Grafana-дашборд «OpenVPN — Трафик» (monitoring/grafana/dashboards/traffic.json)
 - [ ] финальный прогон + CI + PR

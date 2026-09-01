@@ -91,6 +91,7 @@ var (
 	logFormat                = kingpin.Flag("log.format", "set log format: text, json (default text)").Default("text").Envar("LOG_FORMAT").String()
 	storageBackend           = kingpin.Flag("storage.backend", "storage backend: filesystem, kubernetes.secrets (default filesystem)").Default("filesystem").Envar("STORAGE_BACKEND").String()
 	clientCertExpirationDays = kingpin.Flag("client-cert.expiration-days", "Expiration period of OpenVPN client certificates in days, the period will shrink automatically to the CA expiration period").Default("3650").Envar("CLIENT_CERT_EXPIRATION_DAYS").String()
+	statDbPath               = kingpin.Flag("statistic.db", "path to the monthly traffic statistic database (empty to disable persistence)").Default("./data/traffic.db").Envar("OVPN_STAT_DB").String()
 
 	certsArchivePath = "/tmp/" + certsArchiveFileName
 	ccdArchivePath   = "/tmp/" + ccdArchiveFileName
@@ -203,6 +204,7 @@ type OvpnAdmin struct {
 	modules                []string
 	mgmtStatusTimeFormat   string
 	createUserMutex        *sync.Mutex
+	stat                   *statStore
 }
 
 type OpenvpnServer struct {
@@ -542,6 +544,8 @@ func main() {
 
 	ovpnAdmin.mgmtSetTimeFormat()
 
+	ovpnAdmin.stat = newStatStore(*statDbPath)
+
 	ovpnAdmin.registerMetrics()
 	ovpnAdmin.setState()
 
@@ -587,6 +591,7 @@ func main() {
 	http.HandleFunc(*listenBaseUrl+"api/user/config/show", ovpnAdmin.userShowConfigHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/disconnect", ovpnAdmin.userDisconnectHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/statistic", ovpnAdmin.userStatisticHandler)
+	http.HandleFunc(*listenBaseUrl+"api/statistic", ovpnAdmin.statisticHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/ccd", ovpnAdmin.userShowCcdHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/ccd/apply", ovpnAdmin.userApplyCcdHandler)
 
@@ -624,10 +629,13 @@ func (oAdmin *OvpnAdmin) registerMetrics() {
 	oAdmin.promRegistry.MustRegister(ovpnClientConnectionFrom)
 	oAdmin.promRegistry.MustRegister(ovpnClientBytesReceived)
 	oAdmin.promRegistry.MustRegister(ovpnClientBytesSent)
+	oAdmin.promRegistry.MustRegister(ovpnClientTrafficReceivedTotal)
+	oAdmin.promRegistry.MustRegister(ovpnClientTrafficSentTotal)
 }
 
 func (oAdmin *OvpnAdmin) setState() {
 	oAdmin.activeClients = oAdmin.mgmtGetActiveClients()
+	oAdmin.stat.record(oAdmin.activeClients)
 	oAdmin.clients = oAdmin.usersList()
 
 	ovpnServerCaCertExpire.Set(float64((getOvpnCaCertExpireDate().Unix() - time.Now().Unix()) / 3600 / 24))

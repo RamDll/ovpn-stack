@@ -32,6 +32,17 @@ export interface Ccd {
   CustomRoutes: CcdRoute[]
 }
 
+export interface MonthBytes {
+  rx: number
+  tx: number
+}
+
+/** Ответ `api/statistic`. */
+export interface Statistic {
+  monthly: { user: string; months: Record<string, MonthBytes> }[]
+  session: Record<string, MonthBytes>
+}
+
 /** Элемент ответа `api/user/statistic` — активная сессия клиента. */
 export interface ClientStatus {
   CommonName: string
