@@ -39,7 +39,6 @@ export default {
     title: 'Users & certificates',
     summary: '{total} issued · {online} online',
     addUser: 'Add user',
-    downloadAll: 'Download all',
     filter: 'Filter by name or status…',
     filterOnline: 'Online',
     filterRevoked: 'Revoked',

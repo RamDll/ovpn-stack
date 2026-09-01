@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { apiUrl } from '@/api/client'
 
 defineProps<{
   search: string
@@ -17,8 +16,6 @@ const emit = defineEmits<{
   refresh: []
 }>()
 const { t } = useI18n()
-
-const downloadAllUrl = apiUrl('api/data/certs/download')
 </script>
 
 <template>
@@ -58,7 +55,6 @@ const downloadAllUrl = apiUrl('api/data/certs/download')
 
     <span class="spacer" />
 
-    <a class="btn btn-ghost" :href="downloadAllUrl">{{ t('users.downloadAll') }}</a>
     <button class="btn btn-ghost" type="button" @click="emit('refresh')">{{ t('common.refresh') }}</button>
 
     <button v-if="canCreate" class="btn btn-primary" type="button" @click="emit('add')">

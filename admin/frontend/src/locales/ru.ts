@@ -39,7 +39,6 @@ export default {
     title: 'Пользователи и сертификаты',
     summary: '{total} выпущено · {online} онлайн',
     addUser: 'Добавить',
-    downloadAll: 'Скачать все',
     filter: 'Поиск по имени или статусу…',
     filterOnline: 'Онлайн',
     filterRevoked: 'Отозванные',

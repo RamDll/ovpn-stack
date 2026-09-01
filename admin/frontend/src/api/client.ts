@@ -34,11 +34,6 @@ function url(path: string): string {
   return new URL(path, API_BASE).href
 }
 
-/** абсолютный URL эндпоинта — для прямых ссылок/скачиваний */
-export function apiUrl(path: string): string {
-  return url(path)
-}
-
 async function parse<T>(res: Response): Promise<T> {
   const text = await res.text()
   if (!res.ok) throw new ApiError(res.status, text)

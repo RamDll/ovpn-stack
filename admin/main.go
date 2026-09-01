@@ -474,10 +474,7 @@ func (oAdmin *OvpnAdmin) downloadCertsHandler(w http.ResponseWriter, r *http.Req
 	_ = r.ParseForm()
 	token := r.Form.Get("token")
 
-	// token обязателен только для межсерверной синхронизации (slave тянет с master).
-	// Запрос из UI приходит уже за Basic Auth реверс-прокси — токен не требуем,
-	// но если он передан и неверный — отказываем.
-	if token != "" && token != oAdmin.masterSyncToken {
+	if token != oAdmin.masterSyncToken {
 		http.Error(w, `{"status":"error"}`, http.StatusForbidden)
 		return
 	}
