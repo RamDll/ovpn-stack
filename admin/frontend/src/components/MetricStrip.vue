@@ -5,7 +5,6 @@ defineProps<{
   total: number
   revoked: number
   expired: number
-  expiringSoon: number
   traffic: string
 }>()
 const { t } = useI18n()
@@ -22,10 +21,6 @@ const { t } = useI18n()
       <div class="v u-num">{{ total }}</div>
       <div class="delta">{{ t('metrics.revokedExpired', { revoked, expired }) }}</div>
     </div>
-    <div class="metric" :class="{ 'is-warn': expiringSoon > 0 }">
-      <div class="k">{{ t('metrics.expiringSoon') }}</div>
-      <div class="v u-num">{{ expiringSoon }}</div>
-    </div>
     <div class="metric">
       <div class="k">{{ t('metrics.traffic') }}</div>
       <div class="v traffic-v">{{ traffic }}</div>
@@ -37,7 +32,7 @@ const { t } = useI18n()
 <style scoped>
 .metrics {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r);
@@ -78,9 +73,13 @@ const { t } = useI18n()
   font-size: var(--fs-lg);
   font-family: var(--mono);
 }
-@media (max-width: 720px) {
+@media (max-width: 640px) {
   .metrics {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
+  }
+  .metric {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-soft);
   }
 }
 </style>
