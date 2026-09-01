@@ -20,6 +20,8 @@ body {
   font-size: var(--fs-base);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  /* админка — сплошные таблицы и счётчики, поэтому моноширинные цифры глобально */
+  font-variant-numeric: tabular-nums;
 }
 
 #app {
