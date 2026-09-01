@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import ModalShell from '../ModalShell.vue'
 import { ovpn } from '@/api/ovpn'
 import { useUserActions } from '@/composables/useUserActions'
@@ -9,6 +10,7 @@ import type { Ccd, CcdRoute } from '@/api/types'
 const props = defineProps<{ open: boolean; username: string; readonly: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
+const { t } = useI18n()
 const { applyCcd } = useUserActions()
 
 const ccd = reactive<Ccd>({ User: '', ClientAddress: '', CustomRoutes: [] })
@@ -45,7 +47,6 @@ function addRoute() {
   ccd.CustomRoutes.push({ ...draft })
   Object.assign(draft, { Address: '', Mask: '', Description: '' })
 }
-
 function removeRoute(i: number) {
   ccd.CustomRoutes.splice(i, 1)
 }
@@ -71,23 +72,17 @@ async function save() {
 <template>
   <ModalShell
     :open="open"
-    :title="readonly ? 'Маршруты (только чтение)' : 'Маршруты клиента'"
+    :title="readonly ? t('ccd.titleReadonly') : t('ccd.title')"
     :description="username"
     wide
     @update:open="emit('update:open', $event)"
   >
-    <p v-if="loading" class="muted">Загрузка…</p>
+    <p v-if="loading" class="muted">{{ t('common.loading') }}</p>
     <template v-else>
       <div class="field">
-        <label>Статический адрес</label>
+        <label>{{ t('ccd.staticAddress') }}</label>
         <div class="addr-row">
-          <input
-            v-model="ccd.ClientAddress"
-            class="input"
-            type="text"
-            placeholder="dynamic"
-            :readonly="readonly"
-          />
+          <input v-model="ccd.ClientAddress" class="input" type="text" placeholder="dynamic" :readonly="readonly" />
           <button
             v-if="!readonly"
             class="btn btn-ghost"
@@ -95,7 +90,7 @@ async function save() {
             :disabled="isDynamic"
             @click="ccd.ClientAddress = 'dynamic'"
           >
-            Сбросить
+            {{ t('ccd.reset') }}
           </button>
         </div>
       </div>
@@ -104,9 +99,9 @@ async function save() {
         <table>
           <thead>
             <tr>
-              <th>Address</th>
-              <th>Mask</th>
-              <th>Description</th>
+              <th>{{ t('ccd.address') }}</th>
+              <th>{{ t('ccd.mask') }}</th>
+              <th>{{ t('ccd.description') }}</th>
               <th v-if="!readonly" />
             </tr>
           </thead>
@@ -116,33 +111,19 @@ async function save() {
               <td><input v-model="r.Mask" class="input sm" :readonly="readonly" /></td>
               <td><input v-model="r.Description" class="input sm" :readonly="readonly" /></td>
               <td v-if="!readonly" class="del">
-                <button
-                  class="btn btn-ghost sm"
-                  type="button"
-                  aria-label="Удалить маршрут"
-                  @click="removeRoute(i)"
-                >
-                  ✕
-                </button>
+                <button class="btn btn-ghost sm" type="button" :aria-label="t('ccd.removeRoute')" @click="removeRoute(i)">✕</button>
               </td>
             </tr>
             <tr v-if="!readonly" class="draft">
               <td><input v-model="draft.Address" class="input sm" placeholder="10.0.0.0" /></td>
               <td><input v-model="draft.Mask" class="input sm" placeholder="255.255.255.0" /></td>
-              <td><input v-model="draft.Description" class="input sm" placeholder="описание" /></td>
+              <td><input v-model="draft.Description" class="input sm" :placeholder="t('ccd.descPlaceholder')" /></td>
               <td class="del">
-                <button
-                  class="btn btn-primary sm"
-                  type="button"
-                  aria-label="Добавить маршрут"
-                  @click="addRoute"
-                >
-                  +
-                </button>
+                <button class="btn btn-primary sm" type="button" :aria-label="t('ccd.addRoute')" @click="addRoute">+</button>
               </td>
             </tr>
             <tr v-if="readonly && ccd.CustomRoutes.length === 0">
-              <td colspan="3" class="muted">маршрутов нет</td>
+              <td colspan="3" class="muted">{{ t('ccd.noRoutes') }}</td>
             </tr>
           </tbody>
         </table>
@@ -153,10 +134,10 @@ async function save() {
 
     <template #footer>
       <button class="btn btn-ghost" type="button" :disabled="busy" @click="emit('update:open', false)">
-        {{ readonly ? 'Закрыть' : 'Отмена' }}
+        {{ readonly ? t('common.close') : t('common.cancel') }}
       </button>
       <button v-if="!readonly" class="btn btn-primary" type="button" :disabled="busy || loading" @click="save">
-        {{ busy ? 'Применяем…' : 'Сохранить' }}
+        {{ busy ? t('common.saving') : t('common.save') }}
       </button>
     </template>
   </ModalShell>

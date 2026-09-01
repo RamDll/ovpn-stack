@@ -10,13 +10,14 @@ import ConfirmModal from './modals/ConfirmModal.vue'
 import type { ConfirmKind } from './modals/ConfirmModal.vue'
 import ConfigModal from './modals/ConfigModal.vue'
 import CcdModal from './modals/CcdModal.vue'
+import { useI18n } from 'vue-i18n'
 import { useUsers } from '@/composables/useUsers'
 import { useServerSettings } from '@/composables/useServerSettings'
 import { useTraffic } from '@/composables/useTraffic'
 import { formatBytes } from '@/utils/format'
 
-const { filtered, stats, search, hideRevoked, setHideRevoked, loading, error, refresh, users } =
-  useUsers()
+const { t } = useI18n()
+const { filtered, stats, search, loading, error, refresh, users } = useUsers()
 const { role, modules, isMaster, isSlave, hasModule } = useServerSettings()
 const { byUser: trafficByUser, total: trafficTotal, refresh: refreshTraffic } = useTraffic()
 
@@ -36,9 +37,9 @@ onMounted(() => {
 onBeforeUnmount(() => window.clearInterval(poll))
 
 const trafficLabel = computed(() => {
-  const t = trafficTotal.value
-  if (t.rx + t.tx === 0) return '—'
-  return `${formatBytes(t.rx)} ↓ · ${formatBytes(t.tx)} ↑`
+  const tot = trafficTotal.value
+  if (tot.rx + tot.tx === 0) return '—'
+  return `${formatBytes(tot.rx)} ↓ · ${formatBytes(tot.tx)} ↑`
 })
 
 const DAY = 86_400_000
@@ -46,8 +47,8 @@ const expiringSoon = computed(
   () =>
     users.value.filter((u) => {
       if (u.AccountStatus !== 'Active') return false
-      const t = Date.parse(u.ExpirationDate.replace(' ', 'T'))
-      return !Number.isNaN(t) && t - Date.now() < 30 * DAY
+      const ts = Date.parse(u.ExpirationDate.replace(' ', 'T'))
+      return !Number.isNaN(ts) && ts - Date.now() < 30 * DAY
     }).length,
 )
 
@@ -83,8 +84,8 @@ function onAction(action: RowAction, username: string) {
 
 <template>
   <div class="page-head">
-    <h1>Users &amp; certificates</h1>
-    <span class="count">{{ stats.total }} issued &middot; {{ stats.connected }} online</span>
+    <h1>{{ t('users.title') }}</h1>
+    <span class="count">{{ t('users.summary', { total: stats.total, online: stats.connected }) }}</span>
   </div>
 
   <MetricStrip
@@ -96,15 +97,13 @@ function onAction(action: RowAction, username: string) {
     :traffic="trafficLabel"
   />
 
-  <p v-if="error" class="load-error">Не удалось загрузить список: {{ error }}</p>
+  <p v-if="error" class="load-error">{{ t('users.loadError', { error }) }}</p>
 
   <div class="card">
     <Toolbar
       :search="search"
-      :hide-revoked="hideRevoked"
       :can-create="isMaster"
       @update:search="search = $event"
-      @update:hide-revoked="setHideRevoked($event)"
       @refresh="refresh"
       @add="addOpen = true"
     />

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { AccountStatus, ConnectionStatus } from '@/api/types'
 
 const props = defineProps<{
@@ -7,20 +8,21 @@ const props = defineProps<{
   connection: ConnectionStatus
   expiringSoon?: boolean
 }>()
+const { t } = useI18n()
 
 const view = computed(() => {
-  if (props.account === 'Revoked') return { cls: 'crit', label: 'Revoked' }
-  if (props.account === 'Expired') return { cls: 'crit', label: 'Expired' }
-  if (props.connection === 'Connected') return { cls: 'ok', label: 'Connected' }
-  if (props.expiringSoon) return { cls: 'warn', label: 'Expiring' }
-  return { cls: 'idle', label: 'Valid' }
+  if (props.account === 'Revoked') return { cls: 'crit', key: 'status.revoked' }
+  if (props.account === 'Expired') return { cls: 'crit', key: 'status.expired' }
+  if (props.connection === 'Connected') return { cls: 'ok', key: 'status.connected' }
+  if (props.expiringSoon) return { cls: 'warn', key: 'status.expiring' }
+  return { cls: 'idle', key: 'status.valid' }
 })
 </script>
 
 <template>
   <span class="pill" :class="view.cls">
     <span class="d" />
-    {{ view.label }}
+    {{ t(view.key) }}
   </span>
 </template>
 

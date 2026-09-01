@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import ModalShell from '../ModalShell.vue'
 import { useUserActions } from '@/composables/useUserActions'
 import { ApiError } from '@/api/client'
@@ -7,13 +8,12 @@ import { ApiError } from '@/api/client'
 const props = defineProps<{
   open: boolean
   username: string
-  /** 'change' — сменить пароль; 'rotate' — перевыпуск сертификата (пароль опционален) */
   mode: 'change' | 'rotate'
-  /** показывать поле пароля (passwdAuth включён) */
   askPassword: boolean
 }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
+const { t } = useI18n()
 const { changePassword, rotate } = useUserActions()
 
 const password = ref('')
@@ -35,7 +35,7 @@ watch(
 async function submit() {
   error.value = ''
   if (props.mode === 'change' && password.value.length < 6) {
-    error.value = 'Минимум 6 символов'
+    error.value = t('password.minLen')
     return
   }
   busy.value = true
@@ -57,33 +57,22 @@ async function submit() {
 <template>
   <ModalShell
     :open="open"
-    :title="mode === 'change' ? 'Смена пароля' : 'Перевыпуск сертификата'"
+    :title="mode === 'change' ? t('password.changeTitle') : t('password.rotateTitle')"
     :description="username"
     @update:open="emit('update:open', $event)"
   >
     <form class="form" @submit.prevent="submit">
-      <p v-if="mode === 'rotate'" class="note">
-        Текущий сертификат будет отозван и выпущен новый. Клиенту нужен новый
-        <code>.ovpn</code>.
-      </p>
+      <p v-if="mode === 'rotate'" class="note">{{ t('password.rotateNote') }}</p>
       <div v-if="askPassword || mode === 'change'" class="field">
-        <label for="pm-pass">Новый пароль</label>
-        <input
-          id="pm-pass"
-          v-model="password"
-          class="input"
-          type="password"
-          minlength="6"
-          autocomplete="new-password"
-          autofocus
-        />
+        <label for="pm-pass">{{ t('password.newPassword') }}</label>
+        <input id="pm-pass" v-model="password" class="input" type="password" minlength="6" autocomplete="new-password" autofocus />
       </div>
       <p v-if="error" class="alert alert-error">{{ error }}</p>
     </form>
 
     <template #footer>
       <button class="btn btn-ghost" type="button" :disabled="busy" @click="emit('update:open', false)">
-        Отмена
+        {{ t('common.cancel') }}
       </button>
       <button
         class="btn"
@@ -92,7 +81,7 @@ async function submit() {
         :disabled="busy"
         @click="submit"
       >
-        {{ busy ? '…' : mode === 'change' ? 'Сменить пароль' : 'Перевыпустить' }}
+        {{ busy ? '…' : mode === 'change' ? t('password.changeSubmit') : t('password.rotateSubmit') }}
       </button>
     </template>
   </ModalShell>
@@ -108,9 +97,5 @@ async function submit() {
   margin: 0;
   color: var(--text-dim);
   font-size: var(--fs-sm);
-}
-.note code {
-  font-family: var(--mono);
-  color: var(--text);
 }
 </style>
