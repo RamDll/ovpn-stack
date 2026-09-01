@@ -8,7 +8,9 @@ import {
   DialogDescription,
   DialogClose,
 } from 'reka-ui'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 defineProps<{
   open: boolean
   title: string
@@ -28,7 +30,7 @@ const emit = defineEmits<{ 'update:open': [value: boolean] }>()
             <DialogTitle class="title">{{ title }}</DialogTitle>
             <DialogDescription v-if="description" class="desc">{{ description }}</DialogDescription>
           </div>
-          <DialogClose class="x" aria-label="Закрыть">esc</DialogClose>
+          <DialogClose class="x" :aria-label="t('common.close')">{{ t('common.esc') }}</DialogClose>
         </header>
         <div class="body">
           <slot />

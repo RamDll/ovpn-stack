@@ -1,15 +1,13 @@
 <script setup lang="ts">
-defineProps<{
-  search: string
-  hideRevoked: boolean
-  canCreate: boolean
-}>()
+import { useI18n } from 'vue-i18n'
+
+defineProps<{ search: string; canCreate: boolean }>()
 const emit = defineEmits<{
   'update:search': [value: string]
-  'update:hideRevoked': [value: boolean]
   add: []
   refresh: []
 }>()
+const { t } = useI18n()
 </script>
 
 <template>
@@ -22,30 +20,20 @@ const emit = defineEmits<{
       <input
         :value="search"
         type="text"
-        placeholder="Filter by name or status…"
+        :placeholder="t('users.filter')"
         @input="emit('update:search', ($event.target as HTMLInputElement).value)"
       />
     </label>
 
     <span class="spacer" />
 
-    <button
-      class="toggle"
-      type="button"
-      :aria-pressed="hideRevoked"
-      @click="emit('update:hideRevoked', !hideRevoked)"
-    >
-      <span class="track" :class="{ on: hideRevoked }" />
-      Hide revoked
-    </button>
-
-    <button class="btn btn-ghost" type="button" @click="emit('refresh')">Refresh</button>
+    <button class="btn btn-ghost" type="button" @click="emit('refresh')">{{ t('common.refresh') }}</button>
 
     <button v-if="canCreate" class="btn btn-primary" type="button" @click="emit('add')">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true">
         <path d="M12 5v14M5 12h14" />
       </svg>
-      Add user
+      {{ t('users.addUser') }}
     </button>
   </div>
 </template>
@@ -83,44 +71,6 @@ const emit = defineEmits<{
 .spacer {
   flex: 1;
 }
-.toggle {
-  all: unset;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-dim);
-  font-size: var(--fs-sm);
-  font-weight: 500;
-  cursor: pointer;
-}
-.toggle .track {
-  width: 32px;
-  height: 18px;
-  border-radius: 999px;
-  background: var(--surface-3);
-  border: 1px solid var(--border);
-  position: relative;
-  transition: background 0.15s;
-}
-.toggle .track::after {
-  content: '';
-  position: absolute;
-  top: 1px;
-  left: 1px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--text-dim);
-  transition: transform 0.15s, background 0.15s;
-}
-.toggle .track.on {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-}
-.toggle .track.on::after {
-  transform: translateX(14px);
-  background: var(--accent);
-}
 .btn {
   all: unset;
   box-sizing: border-box;
@@ -152,7 +102,6 @@ const emit = defineEmits<{
   background: var(--surface-2);
 }
 
-/* узкий экран (телефон вертикально): поиск во всю ширину, кнопки переносятся под него */
 @media (max-width: 560px) {
   .toolbar {
     flex-wrap: wrap;
@@ -165,8 +114,7 @@ const emit = defineEmits<{
   .spacer {
     display: none;
   }
-  .btn,
-  .toggle {
+  .btn {
     flex: 1;
     justify-content: center;
   }

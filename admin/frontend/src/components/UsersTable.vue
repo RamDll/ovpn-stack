@@ -1,8 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import {
+  DropdownMenuRoot,
+  DropdownMenuTrigger,
+  DropdownMenuPortal,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from 'reka-ui'
 import StatusPill from './StatusPill.vue'
 import { formatBytes } from '@/utils/format'
-import type { Traffic } from '@/composables/useTraffic'
+import type { Session } from '@/composables/useTraffic'
 import type { OpenvpnClient, OvpnModule, ServerRole } from '@/api/types'
 
 export type RowAction =
@@ -20,28 +28,30 @@ const props = defineProps<{
   loading: boolean
   role: ServerRole
   modules: OvpnModule[]
-  traffic: Record<string, Traffic>
+  traffic: Record<string, Session>
 }>()
 const emit = defineEmits<{ action: [action: RowAction, username: string] }>()
+const { t } = useI18n()
 
 const DAY = 86_400_000
 
 function parseDate(s: string): number | null {
   if (!s) return null
-  const t = Date.parse(s.replace(' ', 'T'))
-  return Number.isNaN(t) ? null : t
+  const ts = Date.parse(s.replace(' ', 'T'))
+  return Number.isNaN(ts) ? null : ts
 }
-
 function expiringSoon(row: OpenvpnClient): boolean {
   if (row.AccountStatus !== 'Active') return false
-  const t = parseDate(row.ExpirationDate)
-  return t !== null && t - Date.now() < 30 * DAY
+  const ts = parseDate(row.ExpirationDate)
+  return ts !== null && ts - Date.now() < 30 * DAY
 }
-
 function fmtDate(s: string): string {
   return s ? s.split(' ')[0] : '—'
 }
-
+function fmtTime(s: string): string {
+  const parts = s.split(' ')
+  return parts.length > 1 ? parts[1].slice(0, 5) : s
+}
 function rowClass(row: OpenvpnClient): string {
   if (row.AccountStatus === 'Revoked' || row.AccountStatus === 'Expired') return 's-crit'
   if (row.ConnectionStatus === 'Connected') return 's-ok'
@@ -51,28 +61,39 @@ function rowClass(row: OpenvpnClient): string {
 
 interface ActionDef {
   action: RowAction
-  label: string
+  key: string
   tone?: 'warn' | 'crit'
   when: (r: OpenvpnClient) => boolean
   roles: ServerRole[]
   module: OvpnModule
 }
-
 const ACTIONS: ActionDef[] = [
-  { action: 'download-config', label: 'Config', when: (r) => r.AccountStatus === 'Active', roles: ['master', 'slave'], module: 'core' },
-  { action: 'edit-ccd', label: 'Routes', when: (r) => r.AccountStatus === 'Active', roles: ['master', 'slave'], module: 'ccd' },
-  { action: 'change-password', label: 'Password', when: (r) => r.AccountStatus === 'Active', roles: ['master'], module: 'passwdAuth' },
-  { action: 'disconnect', label: 'Disconnect', when: (r) => r.ConnectionStatus === 'Connected', roles: ['master'], module: 'core' },
-  { action: 'revoke', label: 'Revoke', tone: 'warn', when: (r) => r.AccountStatus === 'Active', roles: ['master'], module: 'core' },
-  { action: 'unrevoke', label: 'Unrevoke', when: (r) => r.AccountStatus === 'Revoked', roles: ['master'], module: 'core' },
-  { action: 'rotate', label: 'Rotate', tone: 'warn', when: (r) => r.AccountStatus !== 'Active', roles: ['master'], module: 'core' },
-  { action: 'delete', label: 'Delete', tone: 'crit', when: (r) => r.AccountStatus !== 'Active', roles: ['master'], module: 'core' },
+  { action: 'download-config', key: 'actions.config', when: (r) => r.AccountStatus === 'Active', roles: ['master', 'slave'], module: 'core' },
+  { action: 'edit-ccd', key: 'actions.routes', when: (r) => r.AccountStatus === 'Active', roles: ['master', 'slave'], module: 'ccd' },
+  { action: 'change-password', key: 'actions.password', when: (r) => r.AccountStatus === 'Active', roles: ['master'], module: 'passwdAuth' },
+  { action: 'disconnect', key: 'actions.disconnect', tone: 'warn', when: (r) => r.ConnectionStatus === 'Connected', roles: ['master'], module: 'core' },
+  { action: 'revoke', key: 'actions.revoke', tone: 'warn', when: (r) => r.AccountStatus === 'Active', roles: ['master'], module: 'core' },
+  { action: 'unrevoke', key: 'actions.unrevoke', when: (r) => r.AccountStatus === 'Revoked', roles: ['master'], module: 'core' },
+  { action: 'rotate', key: 'actions.rotate', tone: 'warn', when: (r) => r.AccountStatus !== 'Active', roles: ['master'], module: 'core' },
+  { action: 'delete', key: 'actions.delete', tone: 'crit', when: (r) => r.AccountStatus !== 'Active', roles: ['master'], module: 'core' },
 ]
-
 function actionsFor(row: OpenvpnClient): ActionDef[] {
   return ACTIONS.filter(
     (a) => a.when(row) && a.roles.includes(props.role) && props.modules.includes(a.module),
   )
+}
+
+function subline(row: OpenvpnClient): string {
+  const s = props.traffic[row.Identity]
+  if (row.ConnectionStatus === 'Connected' && s) {
+    const bits = []
+    if (s.virtualAddress) bits.push(s.virtualAddress)
+    if (s.connectedSince) bits.push(t('table.onlineSince', { time: fmtTime(s.connectedSince) }))
+    if (s.realAddress) bits.push(t('table.from', { ip: s.realAddress }))
+    return bits.join(' · ')
+  }
+  if (row.ExpirationDate) return t('table.expiresOn', { date: fmtDate(row.ExpirationDate) })
+  return ''
 }
 
 const isEmpty = computed(() => !props.loading && props.rows.length === 0)
@@ -84,24 +105,25 @@ const isEmpty = computed(() => !props.loading && props.rows.length === 0)
       <thead>
         <tr>
           <th class="lineno">#</th>
-          <th>Name</th>
-          <th>Status</th>
-          <th>Traffic &middot; session</th>
-          <th>Expires</th>
-          <th class="right">Actions</th>
+          <th>{{ t('table.name') }}</th>
+          <th>{{ t('table.status') }}</th>
+          <th>{{ t('table.trafficSession') }}</th>
+          <th>{{ t('table.expires') }}</th>
+          <th class="right">{{ t('table.actions') }}</th>
         </tr>
       </thead>
       <tbody>
         <tr v-if="loading">
-          <td colspan="6" class="state">Загрузка…</td>
+          <td colspan="6" class="state">{{ t('common.loading') }}</td>
         </tr>
         <tr v-else-if="isEmpty">
-          <td colspan="6" class="state">Пользователей пока нет.</td>
+          <td colspan="6" class="state">{{ t('users.empty') }}</td>
         </tr>
         <tr v-for="(row, i) in rows" v-else :key="row.Identity" :class="rowClass(row)">
           <td class="lineno">{{ i + 1 }}</td>
           <td>
             <span class="identity">{{ row.Identity }}</span>
+            <span v-if="subline(row)" class="sub" :class="{ soon: expiringSoon(row) }">{{ subline(row) }}</span>
           </td>
           <td>
             <StatusPill
@@ -111,7 +133,10 @@ const isEmpty = computed(() => !props.loading && props.rows.length === 0)
             />
           </td>
           <td>
-            <span v-if="traffic[row.Identity] && traffic[row.Identity].rx + traffic[row.Identity].tx > 0" class="traffic">
+            <span
+              v-if="traffic[row.Identity] && traffic[row.Identity].rx + traffic[row.Identity].tx > 0"
+              class="traffic"
+            >
               <span><span class="ar">&#8595;</span>{{ formatBytes(traffic[row.Identity].rx) }}</span>
               <span><span class="ar">&#8593;</span>{{ formatBytes(traffic[row.Identity].tx) }}</span>
             </span>
@@ -122,16 +147,22 @@ const isEmpty = computed(() => !props.loading && props.rows.length === 0)
           </td>
           <td>
             <div class="row-actions">
-              <button
-                v-for="a in actionsFor(row)"
-                :key="a.action"
-                class="act"
-                :class="a.tone"
-                type="button"
-                @click="emit('action', a.action, row.Identity)"
-              >
-                {{ a.label }}
-              </button>
+              <DropdownMenuRoot v-if="actionsFor(row).length">
+                <DropdownMenuTrigger class="kebab" :aria-label="t('actions.menu')">&#8943;</DropdownMenuTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuContent class="menu" align="end" :side-offset="4">
+                    <DropdownMenuItem
+                      v-for="a in actionsFor(row)"
+                      :key="a.action"
+                      class="menu-item"
+                      :class="a.tone"
+                      @select="emit('action', a.action, row.Identity)"
+                    >
+                      {{ t(a.key) }}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenuPortal>
+              </DropdownMenuRoot>
             </div>
           </td>
         </tr>
@@ -148,7 +179,7 @@ const isEmpty = computed(() => !props.loading && props.rows.length === 0)
   width: 100%;
   border-collapse: collapse;
   font-size: var(--fs-sm);
-  min-width: 860px;
+  min-width: 820px;
 }
 .users thead th {
   text-align: left;
@@ -201,9 +232,20 @@ tr.s-crit td:first-child {
   width: 34px;
 }
 .identity {
+  display: block;
   font-family: var(--mono);
   font-weight: 500;
   color: var(--text);
+}
+.sub {
+  display: block;
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+  font-family: var(--mono);
+  margin-top: 3px;
+}
+.sub.soon {
+  color: var(--warn);
 }
 .traffic {
   display: inline-flex;
@@ -231,34 +273,58 @@ tr.s-crit td:first-child {
 }
 .row-actions {
   display: flex;
-  gap: 4px;
   justify-content: flex-end;
 }
-.act {
-  all: unset;
-  box-sizing: border-box;
-  display: inline-grid;
-  place-items: center;
-  height: 27px;
-  padding: 0 9px;
-  border-radius: 4px;
+.kebab {
+  appearance: none;
+  background: transparent;
   border: 1px solid var(--border);
   color: var(--text-dim);
-  font-size: var(--fs-xs);
-  font-weight: 600;
+  height: 27px;
+  width: 30px;
+  border-radius: 5px;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  font-size: 16px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
 }
-.act:hover {
+.kebab:hover,
+.kebab[data-state='open'] {
   color: var(--text);
   background: var(--surface-3);
 }
-.act.warn:hover {
-  color: var(--warn);
-  border-color: var(--warn);
+</style>
+
+<style>
+/* меню в портале — не scoped */
+.menu {
+  min-width: 168px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-modal);
+  padding: 4px;
+  z-index: 60;
 }
-.act.crit:hover {
+.menu-item {
+  padding: 7px 10px;
+  border-radius: 4px;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+.menu-item[data-highlighted] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.menu-item.warn[data-highlighted] {
+  color: var(--warn);
+}
+.menu-item.crit[data-highlighted] {
   color: var(--crit);
-  border-color: var(--crit);
 }
 </style>

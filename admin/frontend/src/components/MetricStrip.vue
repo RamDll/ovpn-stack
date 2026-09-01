@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 defineProps<{
   connected: number
   total: number
@@ -7,27 +8,28 @@ defineProps<{
   expiringSoon: number
   traffic: string
 }>()
+const { t } = useI18n()
 </script>
 
 <template>
   <div class="metrics">
     <div class="metric">
-      <div class="k">Connected now</div>
+      <div class="k">{{ t('metrics.connectedNow') }}</div>
       <div class="v u-num">{{ connected }}</div>
     </div>
     <div class="metric">
-      <div class="k">Issued certificates</div>
+      <div class="k">{{ t('metrics.issued') }}</div>
       <div class="v u-num">{{ total }}</div>
-      <div class="delta">{{ revoked }} revoked &middot; {{ expired }} expired</div>
+      <div class="delta">{{ t('metrics.revokedExpired', { revoked, expired }) }}</div>
     </div>
     <div class="metric" :class="{ 'is-warn': expiringSoon > 0 }">
-      <div class="k">Expiring &lt; 30 days</div>
+      <div class="k">{{ t('metrics.expiringSoon') }}</div>
       <div class="v u-num">{{ expiringSoon }}</div>
     </div>
     <div class="metric">
-      <div class="k">Traffic, live sessions</div>
+      <div class="k">{{ t('metrics.traffic') }}</div>
       <div class="v traffic-v">{{ traffic }}</div>
-      <div class="delta">{{ connected }} онлайн</div>
+      <div class="delta">{{ t('metrics.online', { n: connected }) }}</div>
     </div>
   </div>
 </template>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import ModalShell from '../ModalShell.vue'
 import { useUserActions } from '@/composables/useUserActions'
 import { useServerSettings } from '@/composables/useServerSettings'
@@ -8,6 +9,7 @@ import { ApiError } from '@/api/client'
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
+const { t } = useI18n()
 const { create } = useUserActions()
 const { hasModule } = useServerSettings()
 
@@ -34,7 +36,7 @@ watch(
 async function submit() {
   error.value = ''
   if (!NAME_RE.test(name.value)) {
-    error.value = 'Имя: только a-z A-Z 0-9 . _ - @'
+    error.value = t('addUser.nameError')
     return
   }
   busy.value = true
@@ -50,45 +52,26 @@ async function submit() {
 </script>
 
 <template>
-  <ModalShell
-    :open="open"
-    title="Новый пользователь"
-    @update:open="emit('update:open', $event)"
-  >
+  <ModalShell :open="open" :title="t('addUser.title')" @update:open="emit('update:open', $event)">
     <form class="form" @submit.prevent="submit">
       <div class="field">
-        <label for="au-name">Common name</label>
-        <input
-          id="au-name"
-          v-model="name"
-          class="input"
-          type="text"
-          autocomplete="off"
-          spellcheck="false"
-          autofocus
-        />
-        <span class="hint">a-z A-Z 0-9 . _ - @</span>
+        <label for="au-name">{{ t('addUser.name') }}</label>
+        <input id="au-name" v-model="name" class="input" type="text" autocomplete="off" spellcheck="false" autofocus />
+        <span class="hint">{{ t('addUser.nameHint') }}</span>
       </div>
       <div v-if="hasModule('passwdAuth')" class="field">
-        <label for="au-pass">Пароль</label>
-        <input
-          id="au-pass"
-          v-model="password"
-          class="input"
-          type="password"
-          minlength="6"
-          autocomplete="new-password"
-        />
+        <label for="au-pass">{{ t('addUser.password') }}</label>
+        <input id="au-pass" v-model="password" class="input" type="password" minlength="6" autocomplete="new-password" />
       </div>
       <p v-if="error" class="alert alert-error">{{ error }}</p>
     </form>
 
     <template #footer>
       <button class="btn btn-ghost" type="button" :disabled="busy" @click="emit('update:open', false)">
-        Отмена
+        {{ t('common.cancel') }}
       </button>
       <button class="btn btn-primary" type="button" :disabled="busy || !name" @click="submit">
-        {{ busy ? 'Создаём…' : 'Создать и выпустить сертификат' }}
+        {{ busy ? t('addUser.submitting') : t('addUser.submit') }}
       </button>
     </template>
   </ModalShell>

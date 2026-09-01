@@ -1,5 +1,6 @@
-/* Дизайн-токены. Тёмная тема, зафиксированная (инфраструктурный инструмент).
-   Источник — макет ~/ovpn-admin-mockup.html. Правится здесь в одном месте. */
+/* Дизайн-токены. Правятся здесь в одном месте.
+   :root — тёмная тема (по умолчанию). :root[data-theme="light"] — светлая.
+   useTheme проставляет data-theme на <html> при загрузке. */
 :root {
   --bg:          #0e131e;
   --surface:     #161d2b;
@@ -41,4 +42,63 @@
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
 
   --shadow-modal: 0 24px 60px -12px rgba(0, 0, 0, 0.6);
+}
+
+:root[data-theme="light"] {
+  --bg:          #eef1f6;
+  --surface:     #ffffff;
+  --surface-2:   #f3f6fa;
+  --surface-3:   #e7edf4;
+  --border:      #d7deea;
+  --border-soft: #e6ebf2;
+
+  --text:        #1a2230;
+  --text-dim:    #55606f;
+  --text-faint:  #8a95a5;
+
+  --accent:      #12667f;
+  --accent-hi:   #0f7691;
+  --accent-ink:  #ffffff;
+  --accent-soft: rgba(18, 102, 127, 0.10);
+
+  --ok:      #2f9d4d;
+  --ok-soft: rgba(47, 157, 77, 0.12);
+  --ok-text: #237a3b;
+  --warn:      #b3781a;
+  --warn-soft: rgba(179, 120, 26, 0.13);
+  --warn-text: #8a5c12;
+  --crit:      #cf4657;
+  --crit-soft: rgba(207, 70, 87, 0.11);
+  --crit-text: #a83543;
+
+  --shadow-modal: 0 20px 50px -14px rgba(20, 30, 45, 0.28);
+}
+
+/* системная светлая тема, если пользователь не выбрал явно */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:          #eef1f6;
+    --surface:     #ffffff;
+    --surface-2:   #f3f6fa;
+    --surface-3:   #e7edf4;
+    --border:      #d7deea;
+    --border-soft: #e6ebf2;
+    --text:        #1a2230;
+    --text-dim:    #55606f;
+    --text-faint:  #8a95a5;
+    --accent:      #12667f;
+    --accent-hi:   #0f7691;
+    --accent-ink:  #ffffff;
+    --accent-soft: rgba(18, 102, 127, 0.10);
+    --ok:      #2f9d4d;
+    --ok-soft: rgba(47, 157, 77, 0.12);
+    --ok-text: #237a3b;
+    --warn:      #b3781a;
+    --warn-soft: rgba(179, 120, 26, 0.13);
+    --warn-text: #8a5c12;
+    --crit:      #cf4657;
+    --crit-soft: rgba(207, 70, 87, 0.11);
+    --crit-text: #a83543;
+    --shadow-modal: 0 20px 50px -14px rgba(20, 30, 45, 0.28);
+  }
 }
