@@ -77,11 +77,10 @@ export default {
   },
   metrics: {
     connectedNow: 'Онлайн сейчас',
-    issued: 'Выпущено сертификатов',
-    expiringSoon: 'Истекает < 30 дней',
+    server: 'Сервер',
+    cpu: 'CPU',
+    ram: 'ОЗУ',
     traffic: 'Трафик, активные сессии',
-    revokedExpired: '{revoked} отозвано · {expired} просрочено',
-    online: '{n} онлайн',
   },
   actions: {
     config: 'Конфиг',

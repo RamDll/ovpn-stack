@@ -36,6 +36,17 @@ export interface Ccd {
   CustomRoutes: CcdRoute[]
 }
 
+/** Ответ `api/server/stats` — состояние хоста. */
+export interface SystemStats {
+  hostname: string
+  /** loadavg за 1 минуту */
+  load: number
+  /** число ядер CPU */
+  cpu: number
+  memTotal: number
+  memUsed: number
+}
+
 export interface MonthBytes {
   rx: number
   tx: number

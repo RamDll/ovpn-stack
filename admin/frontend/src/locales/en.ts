@@ -77,11 +77,10 @@ export default {
   },
   metrics: {
     connectedNow: 'Connected now',
-    issued: 'Issued certificates',
-    expiringSoon: 'Expiring < 30 days',
+    server: 'Server',
+    cpu: 'CPU',
+    ram: 'RAM',
     traffic: 'Traffic, live sessions',
-    revokedExpired: '{revoked} revoked · {expired} expired',
-    online: '{n} online',
   },
   actions: {
     config: 'Config',

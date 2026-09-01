@@ -180,22 +180,37 @@ function toggleLocale() {
   background: var(--warn);
   box-shadow: 0 0 0 3px var(--warn-soft);
 }
-@media (max-width: 560px) {
+@media (max-width: 640px) {
   .page {
     padding: 14px 14px 48px;
   }
   .topbar-inner {
-    gap: 12px;
-    padding: 0 12px;
+    height: auto;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 11px 12px;
+  }
+  /* строка 1: логотип слева, переключатели темы/языка и роль справа */
+  .brand {
+    flex: 1 1 auto;
+    min-width: 0;
   }
   .brand .name {
     display: none;
   }
+  .spacer,
   .sync {
     display: none;
   }
-  .role {
-    display: none;
+  /* строка 2: вкладки на всю ширину, как сегментированный переключатель */
+  .nav {
+    order: 9;
+    flex-basis: 100%;
+    gap: 4px;
+  }
+  .nav button {
+    flex: 1;
+    text-align: center;
   }
 }
 </style>

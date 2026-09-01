@@ -589,6 +589,7 @@ func main() {
 
 	http.Handle(*listenBaseUrl, http.StripPrefix(strings.TrimRight(*listenBaseUrl, "/"), static))
 	http.HandleFunc(*listenBaseUrl+"api/server/settings", ovpnAdmin.serverSettingsHandler)
+	http.HandleFunc(*listenBaseUrl+"api/server/stats", ovpnAdmin.systemStatsHandler)
 	http.HandleFunc(*listenBaseUrl+"api/users/list", ovpnAdmin.userListHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/create", ovpnAdmin.userCreateHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/change-password", ovpnAdmin.userChangePasswordHandler)
