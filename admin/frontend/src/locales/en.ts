@@ -52,6 +52,7 @@ export default {
     onlineSince: 'since {time}',
     from: 'from {ip}',
     expiresOn: 'expires {date}',
+    revokedOn: 'revoked {date}',
   },
   status: {
     connected: 'Connected',

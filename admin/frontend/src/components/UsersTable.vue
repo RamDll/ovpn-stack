@@ -88,16 +88,19 @@ function actionsFor(row: OpenvpnClient): ActionDef[] {
 }
 
 function subline(row: OpenvpnClient): string {
+  const bits: string[] = []
   const s = props.traffic[row.Identity]
   if (row.ConnectionStatus === 'Connected' && s) {
-    const bits = []
     if (s.virtualAddress) bits.push(s.virtualAddress)
     if (s.connectedSince) bits.push(t('table.onlineSince', { time: fmtTime(s.connectedSince) }))
     if (s.realAddress) bits.push(t('table.from', { ip: cleanAddr(s.realAddress) }))
-    return bits.join(' · ')
   }
-  if (row.ExpirationDate) return t('table.expiresOn', { date: fmtDate(row.ExpirationDate) })
-  return ''
+  if (row.AccountStatus === 'Revoked' && row.RevocationDate) {
+    bits.push(t('table.revokedOn', { date: fmtDate(row.RevocationDate) }))
+  } else if (row.ExpirationDate) {
+    bits.push(t('table.expiresOn', { date: fmtDate(row.ExpirationDate) }))
+  }
+  return bits.join(' · ')
 }
 
 const isEmpty = computed(() => !props.loading && props.rows.length === 0)
@@ -112,16 +115,15 @@ const isEmpty = computed(() => !props.loading && props.rows.length === 0)
           <th>{{ t('table.name') }}</th>
           <th>{{ t('table.status') }}</th>
           <th>{{ t('table.trafficSession') }}</th>
-          <th>{{ t('table.expires') }}</th>
           <th class="right">{{ t('table.actions') }}</th>
         </tr>
       </thead>
       <tbody>
         <tr v-if="loading">
-          <td colspan="6" class="state">{{ t('common.loading') }}</td>
+          <td colspan="5" class="state">{{ t('common.loading') }}</td>
         </tr>
         <tr v-else-if="isEmpty">
-          <td colspan="6" class="state">{{ t('users.empty') }}</td>
+          <td colspan="5" class="state">{{ t('users.empty') }}</td>
         </tr>
         <tr v-for="(row, i) in rows" v-else :key="row.Identity" :class="rowClass(row)">
           <td class="lineno">{{ i + 1 }}</td>
@@ -145,9 +147,6 @@ const isEmpty = computed(() => !props.loading && props.rows.length === 0)
               <span><span class="ar">&#8593;</span>{{ formatBytes(traffic[row.Identity].tx) }}</span>
             </span>
             <span v-else class="traffic none">&mdash;</span>
-          </td>
-          <td>
-            <span class="when" :class="{ soon: expiringSoon(row) }">{{ fmtDate(row.ExpirationDate) }}</span>
           </td>
           <td>
             <div class="row-actions">
@@ -183,7 +182,7 @@ const isEmpty = computed(() => !props.loading && props.rows.length === 0)
   width: 100%;
   border-collapse: collapse;
   font-size: var(--fs-sm);
-  min-width: 820px;
+  min-width: 640px;
 }
 .users thead th {
   text-align: left;
@@ -265,15 +264,6 @@ tr.s-crit td:first-child {
 }
 .traffic.none {
   color: var(--text-faint);
-}
-.when {
-  font-family: var(--mono);
-  font-size: var(--fs-xs);
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-.when.soon {
-  color: var(--warn);
 }
 .row-actions {
   display: flex;
