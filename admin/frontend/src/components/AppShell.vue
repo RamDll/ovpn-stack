@@ -16,6 +16,7 @@ function toggleLocale() {
 </script>
 
 <template>
+  <div class="page">
   <header class="topbar">
     <div class="topbar-inner">
     <div class="brand">
@@ -57,25 +58,27 @@ function toggleLocale() {
     </div>
   </header>
 
-  <main class="wrap">
+  <main>
     <slot />
   </main>
+  </div>
 </template>
 
 <style scoped>
+.page {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 26px 22px 64px;
+}
 .topbar {
-  height: 58px;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 20;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  margin-bottom: 22px;
 }
 .topbar-inner {
-  max-width: 1360px;
-  height: 100%;
-  margin: 0 auto;
-  padding: 0 22px;
+  height: 56px;
+  padding: 0 18px;
   display: flex;
   align-items: center;
   gap: 20px;
@@ -177,15 +180,13 @@ function toggleLocale() {
   background: var(--warn);
   box-shadow: 0 0 0 3px var(--warn-soft);
 }
-.wrap {
-  max-width: 1360px;
-  margin: 0 auto;
-  padding: 26px 22px 64px;
-}
 @media (max-width: 560px) {
+  .page {
+    padding: 14px 14px 48px;
+  }
   .topbar-inner {
     gap: 12px;
-    padding: 0 14px;
+    padding: 0 12px;
   }
   .brand .name {
     display: none;

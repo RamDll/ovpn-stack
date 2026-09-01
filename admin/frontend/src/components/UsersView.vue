@@ -42,15 +42,6 @@ const trafficLabel = computed(() => {
   return `${formatBytes(tot.rx)} ↓ · ${formatBytes(tot.tx)} ↑`
 })
 
-const DAY = 86_400_000
-const expiringSoon = computed(
-  () =>
-    users.value.filter((u) => {
-      if (u.AccountStatus !== 'Active') return false
-      const ts = Date.parse(u.ExpirationDate.replace(' ', 'T'))
-      return !Number.isNaN(ts) && ts - Date.now() < 30 * DAY
-    }).length,
-)
 
 const addOpen = ref(false)
 const pwd = shallowRef<{ mode: 'change' | 'rotate'; username: string } | null>(null)
@@ -93,7 +84,6 @@ function onAction(action: RowAction, username: string) {
     :total="stats.total"
     :revoked="stats.revoked"
     :expired="stats.expired"
-    :expiring-soon="expiringSoon"
     :traffic="trafficLabel"
   />
 
