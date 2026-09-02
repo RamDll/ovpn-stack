@@ -28,6 +28,9 @@ export function useUserActions() {
     rotate: (username: string, password: string, expireDays = 0) =>
       run(() => ovpn.rotateUser(username, password, expireDays), 'toast.certRotated', username),
 
+    extend: (username: string, expireDays = 0) =>
+      run(() => ovpn.extendUser(username, expireDays), 'toast.certExtended', username),
+
     remove: (username: string) =>
       run(() => ovpn.deleteUser(username), 'toast.userDeleted', username),
 

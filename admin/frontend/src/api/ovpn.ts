@@ -28,6 +28,9 @@ export const ovpn = {
   rotateUser: (username: string, password: string, expireDays = 0) =>
     apiForm('api/user/rotate', { username, password, expire: String(expireDays) }),
 
+  extendUser: (username: string, expireDays = 0) =>
+    apiForm('api/user/extend', { username, expire: String(expireDays) }),
+
   deleteUser: (username: string) => apiForm('api/user/delete', { username }),
 
   revokeUser: (username: string) => apiForm('api/user/revoke', { username }),
