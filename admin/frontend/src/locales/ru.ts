@@ -98,6 +98,8 @@ export default {
     nameHint: 'a-z A-Z 0-9 . _ - @',
     nameError: 'Имя: только a-z A-Z 0-9 . _ - @',
     password: 'Пароль',
+    expire: 'Срок действия сертификата, дней',
+    expireHint: 'по умолчанию 825 (~2 года), максимум 3650',
     submit: 'Создать и выпустить сертификат',
     submitting: 'Создаём…',
   },

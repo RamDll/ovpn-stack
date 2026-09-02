@@ -13,10 +13,13 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
+const EXPIRE_DEFAULT = 825
+
 const { t } = useI18n()
 const { changePassword, rotate } = useUserActions()
 
 const password = ref('')
+const expireDays = ref(EXPIRE_DEFAULT)
 const busy = ref(false)
 const error = ref('')
 
@@ -25,6 +28,7 @@ watch(
   (o) => {
     if (o) {
       password.value = ''
+      expireDays.value = EXPIRE_DEFAULT
       error.value = ''
       busy.value = false
     }
@@ -43,7 +47,8 @@ async function submit() {
     if (props.mode === 'change') {
       await changePassword(props.username, password.value)
     } else {
-      await rotate(props.username, password.value || 'nopass')
+      const days = Math.min(3650, Math.max(1, Math.round(expireDays.value || EXPIRE_DEFAULT)))
+      await rotate(props.username, password.value || 'nopass', days)
     }
     emit('update:open', false)
   } catch (e) {
@@ -66,6 +71,11 @@ async function submit() {
       <div v-if="askPassword || mode === 'change'" class="field">
         <label for="pm-pass">{{ t('password.newPassword') }}</label>
         <input id="pm-pass" v-model="password" class="input" type="password" minlength="6" autocomplete="new-password" autofocus />
+      </div>
+      <div v-if="mode === 'rotate'" class="field">
+        <label for="pm-expire">{{ t('addUser.expire') }}</label>
+        <input id="pm-expire" v-model.number="expireDays" class="input" type="number" min="1" max="3650" step="1" />
+        <span class="hint">{{ t('addUser.expireHint') }}</span>
       </div>
       <p v-if="error" class="alert alert-error">{{ error }}</p>
     </form>

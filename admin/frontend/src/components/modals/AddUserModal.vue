@@ -13,8 +13,11 @@ const { t } = useI18n()
 const { create } = useUserActions()
 const { hasModule } = useServerSettings()
 
+const EXPIRE_DEFAULT = 825
+
 const name = ref('')
 const password = ref('')
+const expireDays = ref(EXPIRE_DEFAULT)
 const busy = ref(false)
 const error = ref('')
 
@@ -26,6 +29,7 @@ watch(
     if (o) {
       name.value = ''
       password.value = ''
+      expireDays.value = EXPIRE_DEFAULT
       error.value = ''
       busy.value = false
     }
@@ -39,9 +43,10 @@ async function submit() {
     error.value = t('addUser.nameError')
     return
   }
+  const days = Math.min(3650, Math.max(1, Math.round(expireDays.value || EXPIRE_DEFAULT)))
   busy.value = true
   try {
-    await create(name.value, password.value || 'nopass')
+    await create(name.value, password.value || 'nopass', days)
     emit('update:open', false)
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : String(e)
@@ -62,6 +67,11 @@ async function submit() {
       <div v-if="hasModule('passwdAuth')" class="field">
         <label for="au-pass">{{ t('addUser.password') }}</label>
         <input id="au-pass" v-model="password" class="input" type="password" minlength="6" autocomplete="new-password" />
+      </div>
+      <div class="field">
+        <label for="au-expire">{{ t('addUser.expire') }}</label>
+        <input id="au-expire" v-model.number="expireDays" class="input" type="number" min="1" max="3650" step="1" />
+        <span class="hint">{{ t('addUser.expireHint') }}</span>
       </div>
       <p v-if="error" class="alert alert-error">{{ error }}</p>
     </form>
