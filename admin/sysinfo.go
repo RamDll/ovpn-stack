@@ -72,12 +72,13 @@ func memInfo() (total, used uint64) {
 	return total, total - avail
 }
 
-// systemStatsHandler отдаёт имя сервера и текущую загрузку CPU/памяти.
+// systemStatsHandler отдаёт имя сервера, загрузку CPU/памяти и трафик за сутки.
 func (oAdmin *OvpnAdmin) systemStatsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Debug(r.RemoteAddr, " ", r.RequestURI)
 	total, used := memInfo()
+	dayRx, dayTx := oAdmin.stat.todayTotal()
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w,
-		`{"hostname":%q,"load":%.2f,"cpu":%d,"memTotal":%d,"memUsed":%d}`,
-		serverName(), loadAvg1(), runtime.NumCPU(), total, used)
+		`{"hostname":%q,"load":%.2f,"cpu":%d,"memTotal":%d,"memUsed":%d,"trafficTodayRx":%d,"trafficTodayTx":%d}`,
+		serverName(), loadAvg1(), runtime.NumCPU(), total, used, dayRx, dayTx)
 }

@@ -79,7 +79,7 @@ export default {
     server: 'Server',
     cpu: 'CPU',
     ram: 'RAM',
-    traffic: 'Traffic, live sessions',
+    trafficToday: 'Traffic today',
   },
   actions: {
     config: 'Config',

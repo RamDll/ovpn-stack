@@ -6,7 +6,6 @@ import type { SystemStats } from '@/api/types'
 
 const props = defineProps<{
   connected: number
-  traffic: string
   sys: SystemStats | null
 }>()
 const { t } = useI18n()
@@ -24,6 +23,8 @@ const ramLine = computed(() => {
 const cpuClass = computed(() =>
   cpuPct.value !== null && cpuPct.value >= 90 ? 'hot' : '',
 )
+const todayRx = computed(() => props.sys?.trafficTodayRx ?? 0)
+const todayTx = computed(() => props.sys?.trafficTodayTx ?? 0)
 </script>
 
 <template>
@@ -44,8 +45,13 @@ const cpuClass = computed(() =>
     </div>
 
     <div class="metric">
-      <div class="k">{{ t('metrics.traffic') }}</div>
-      <div class="v traffic-v">{{ traffic }}</div>
+      <div class="k">{{ t('metrics.trafficToday') }}</div>
+      <div class="v u-num">{{ formatBytes(todayRx + todayTx) }}</div>
+      <div class="delta">
+        <span>&#8595; {{ formatBytes(todayRx) }}</span>
+        <span class="sep">·</span>
+        <span>&#8593; {{ formatBytes(todayTx) }}</span>
+      </div>
     </div>
   </div>
 </template>
@@ -103,10 +109,6 @@ const cpuClass = computed(() =>
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.traffic-v {
-  font-size: var(--fs-lg);
-  font-family: var(--mono);
 }
 @media (max-width: 640px) {
   .metrics {

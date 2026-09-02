@@ -45,6 +45,9 @@ export interface SystemStats {
   cpu: number
   memTotal: number
   memUsed: number
+  /** суммарный трафик всех клиентов за текущие сутки (UTC), байт */
+  trafficTodayRx: number
+  trafficTodayTx: number
 }
 
 export interface MonthBytes {
