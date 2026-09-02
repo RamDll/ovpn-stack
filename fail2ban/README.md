@@ -12,21 +12,21 @@ nginx контейнеризован и пишет логи в stdout/stderr. Ч
 ## Установка на хост
 
 ```bash
-sudo cp fail2ban/jail.d/ovpn-stack.local /etc/fail2ban/jail.d/
+sudo cp fail2ban/action.d/docker-user.conf   /etc/fail2ban/action.d/
+sudo cp fail2ban/jail.d/ovpn-stack.local     /etc/fail2ban/jail.d/
 # поправьте logpath в ovpn-stack.local, если стек лежит не в /root/ovpn-stack
 sudo fail2ban-client reload
 sudo fail2ban-client status nginx-http-auth
 ```
 
 Используется штатный фильтр `nginx-http-auth` (идёт в комплекте fail2ban) —
-джейл переопределяет `logpath` на лог контейнера и `banaction` на
-`iptables-allports[chain="DOCKER-USER"]`. Порог: 5 отказов Basic Auth за
-10 минут → бан на час.
+джейл переопределяет `logpath` на лог контейнера и `banaction` на `docker-user`.
+Порог: 5 отказов Basic Auth за 10 минут → бан на час.
 
-Про `chain="DOCKER-USER"`: пакеты к опубликованным портам контейнера проходят
-через `FORWARD`/`DOCKER-USER`, а не через `INPUT`, поэтому стандартный бан
-`ufw`/`iptables -I INPUT` их не блокирует. Бан в `DOCKER-USER` работает и не
-затрагивает SSH на хосте.
+`docker-user` (`action.d/docker-user.conf`) добавляет `iptables -I DOCKER-USER
+-s <ip> -j DROP`. Пакеты к опубликованным портам контейнера идут через
+`FORWARD` → `DOCKER-USER`, а не через `INPUT`, поэтому обычный бан
+`ufw`/`iptables -I INPUT` их не блокирует (а ufw-бан ещё и рубит SSH на хосте).
 
 ## Проверка
 

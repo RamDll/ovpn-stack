@@ -8,16 +8,16 @@
 # по error.log 443-го server-блока (nginx пишет его в ./nginx/f2b-log/).
 # OpenVPN здесь только по сертификату — брутить нечего, джейла для него нет.
 #
-# banaction = iptables в цепочке DOCKER-USER: трафик к опубликованным портам
-# контейнера идёт через FORWARD/DOCKER-USER, а НЕ через INPUT, поэтому обычный
-# ufw/iptables-INPUT бан его не остановит. Заодно это не трогает SSH на хосте —
-# ошибиться паролём в панели и потерять доступ по ssh нельзя.
+# banaction = docker-user (см. fail2ban/action.d/docker-user.conf): бан правилом
+# в цепочке DOCKER-USER. Трафик к портам контейнера идёт через FORWARD/DOCKER-USER,
+# минуя INPUT — обычный ufw/iptables-INPUT бан его не остановит, а ufw-бан ещё и
+# рубит SSH на хосте.
 
 [nginx-http-auth]
 enabled   = true
 port      = http,https
 logpath   = /root/ovpn-stack/nginx/f2b-log/error.log
-banaction = iptables-allports[chain="DOCKER-USER"]
+banaction = docker-user
 maxretry  = 5
 findtime  = 10m
 bantime   = 1h
