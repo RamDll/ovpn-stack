@@ -19,6 +19,7 @@ ovpn-stack/
 ├── docker-compose.yaml        стек: openvpn + ovpn-admin + prometheus + grafana + node-exporter + nginx
 ├── .env.example               шаблон секретов (скопировать в .env)
 ├── .github/                   CI (docker compose smoke test) + конфиг Dependabot
+├── docs/hardening.md          чек-лист хардненинга хоста
 ├── admin/                     форк ovpn-admin-hardened (Apache-2.0, см. admin/LICENSE)
 │   ├── Dockerfile.openvpn        OpenVPN-сервер с усиленной конфигурацией
 │   ├── Dockerfile.ovpn-admin     Go-бэкенд + сборка фронтенда, статика вшита через //go:embed
@@ -175,9 +176,8 @@ docker compose down -v                                # + удалить дан�
 - fail2ban (каталог `fail2ban/`): бан IP за перебор Basic Auth. Ставится на хост —
   nginx дублирует лог в `nginx/f2b-log/`, jail читает его оттуда. Инструкция —
   `fail2ban/README.md`.
-- Рекомендации для хоста: `unattended-upgrades` для авто-патчей безопасности,
-  SSH только по ключу (`PasswordAuthentication no`, `PermitRootLogin no`),
-  ufw с политикой `deny incoming`.
+- Хардненинг хоста (ufw, SSH, sysctl, автообновления, минимум пакетов) —
+  чек-лист с командами в [`docs/hardening.md`](docs/hardening.md).
 
 ## Отличия от исходных репозиториев
 
