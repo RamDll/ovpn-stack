@@ -15,9 +15,12 @@ nginx контейнеризован и пишет логи в stdout/stderr. Ч
 sudo cp fail2ban/action.d/docker-user.conf   /etc/fail2ban/action.d/
 sudo cp fail2ban/jail.d/ovpn-stack.local     /etc/fail2ban/jail.d/
 # поправьте logpath в ovpn-stack.local, если стек лежит не в /root/ovpn-stack
-sudo fail2ban-client reload
+sudo systemctl restart fail2ban          # именно restart: reload не пересоздаёт banaction
 sudo fail2ban-client status nginx-http-auth
 ```
+
+> `fail2ban-client reload` не меняет `banaction` уже работающего джейла —
+> при установке или смене действия нужен `systemctl restart fail2ban`.
 
 Используется штатный фильтр `nginx-http-auth` (идёт в комплекте fail2ban) —
 джейл переопределяет `logpath` на лог контейнера и `banaction` на `docker-user`.
@@ -31,7 +34,12 @@ sudo fail2ban-client status nginx-http-auth
 ## Проверка
 
 ```bash
-# сгенерировать отказы и посмотреть, что фильтр их ловит
-for i in $(seq 1 6); do curl -sk -o /dev/null -u admin:wrong https://<IP>/; done
-sudo fail2ban-client status nginx-http-auth        # Currently failed должно расти
+# с ДРУГОГО адреса (5 попыток → бан):
+for i in $(seq 1 5); do curl -sk -o /dev/null -u admin:wrong https://<IP>/; done
+sudo fail2ban-client status nginx-http-auth     # Banned IP list: <ваш ip>
+sudo iptables -S DOCKER-USER                    # -A DOCKER-USER -s <ip> -j DROP
+sudo fail2ban-client unban <ip>                 # снять
 ```
+
+Бан режет доступ к `:443` (и `:7777`), но НЕ к SSH на хосте — если случайно
+забанил себя, зайти по ssh и `fail2ban-client unban` всегда можно.
