@@ -12,17 +12,16 @@ nginx контейнеризован и пишет логи в stdout/stderr. Ч
 ## Установка на хост
 
 ```bash
-sudo cp fail2ban/filter.d/nginx-panel-401.conf /etc/fail2ban/filter.d/
-sudo cp fail2ban/jail.d/ovpn-stack.local       /etc/fail2ban/jail.d/
+sudo cp fail2ban/jail.d/ovpn-stack.local /etc/fail2ban/jail.d/
 # поправьте logpath в ovpn-stack.local, если стек лежит не в /root/ovpn-stack
 sudo fail2ban-client reload
 sudo fail2ban-client status nginx-http-auth
-sudo fail2ban-client status nginx-panel-401
 ```
 
-Пороги: 5 отказов Basic Auth за 10 минут → бан на час; отдельно 8 ответов 401
-за 10 минут. `banaction` наследуется из общего конфига fail2ban на хосте
-(`ufw` или `nftables`).
+Используется штатный фильтр `nginx-http-auth` (идёт в комплекте fail2ban) —
+джейл только переопределяет `logpath` на лог контейнера. Порог: 5 отказов
+Basic Auth за 10 минут → бан на час. `banaction` наследуется из общего конфига
+fail2ban на хосте (`ufw` или `nftables`).
 
 ## Проверка
 

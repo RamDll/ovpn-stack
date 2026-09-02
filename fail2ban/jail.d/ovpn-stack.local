@@ -1,26 +1,17 @@
-# fail2ban для ovpn-stack. Скопировать на хост в /etc/fail2ban/jail.d/,
-# фильтр nginx-panel-401.conf — в /etc/fail2ban/filter.d/, затем:
+# fail2ban для ovpn-stack. Скопировать на хост в /etc/fail2ban/jail.d/, затем:
 #   fail2ban-client reload
 #
-# ВАЖНО: пути logpath ниже указаны для развёртывания в /root/ovpn-stack.
+# ВАЖНО: logpath ниже указан для развёртывания в /root/ovpn-stack.
 # Поправьте под свой каталог, если он другой.
+#
+# Отказы Basic Auth (панель + Grafana) ловятся штатным фильтром nginx-http-auth
+# по error.log 443-го server-блока (nginx пишет его в ./nginx/f2b-log/).
+# OpenVPN здесь только по сертификату — брутить нечего, джейла для него нет.
 
-# Отказы Basic Auth (панель + Grafana) — по штатному фильтру nginx-http-auth,
-# читает error.log нужного server-блока (nginx пишет его в ./nginx/f2b-log/).
 [nginx-http-auth]
 enabled  = true
 port     = http,https
 logpath  = /root/ovpn-stack/nginx/f2b-log/error.log
 maxretry = 5
-findtime = 10m
-bantime  = 1h
-
-# Повторные 401 в access.log — ловит перебор до появления диалога авторизации.
-[nginx-panel-401]
-enabled  = true
-filter   = nginx-panel-401
-port     = http,https
-logpath  = /root/ovpn-stack/nginx/f2b-log/access.log
-maxretry = 8
 findtime = 10m
 bantime  = 1h

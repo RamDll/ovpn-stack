@@ -39,7 +39,7 @@ ovpn-stack/
 │   ├── ssl/                   сюда положить fullchain.pem + privkey.pem (в .gitignore)
 │   ├── acme/                  webroot для ACME http-01 challenge (в .gitignore)
 │   └── f2b-log/               access/error лог для fail2ban (bind-mount, в .gitignore)
-└── fail2ban/                  jail + фильтр для бана перебора Basic Auth (ставится на хост)
+└── fail2ban/                  jail для бана перебора Basic Auth (ставится на хост)
 ```
 
 Рантайм-данные (`.env`, `data/` с PKI, `nginx/ssl/`, `nginx/.htpasswd`) в
