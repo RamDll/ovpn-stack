@@ -88,15 +88,9 @@ export default {
     disconnect: 'Disconnect',
     revoke: 'Revoke',
     unrevoke: 'Unrevoke',
-    extend: 'Extend',
     rotate: 'Rotate',
     delete: 'Delete',
     menu: 'Actions',
-  },
-  extend: {
-    title: 'Extend certificate',
-    note: 'The private key stays the same. The old certificate keeps working until its date — deliver the new .ovpn to the client before then.',
-    submit: 'Extend',
   },
   addUser: {
     title: 'New user',
@@ -165,7 +159,6 @@ export default {
     userCreated: 'User {name} created',
     passwordChanged: 'Password for {name} changed',
     certRotated: 'Certificates for {name} rotated',
-    certExtended: 'Certificate for {name} extended',
     userDeleted: 'User {name} deleted',
     userRevoked: 'User {name} revoked',
     userUnrevoked: 'User {name} restored',
