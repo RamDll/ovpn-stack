@@ -19,9 +19,14 @@ sudo fail2ban-client status nginx-http-auth
 ```
 
 Используется штатный фильтр `nginx-http-auth` (идёт в комплекте fail2ban) —
-джейл только переопределяет `logpath` на лог контейнера. Порог: 5 отказов
-Basic Auth за 10 минут → бан на час. `banaction` наследуется из общего конфига
-fail2ban на хосте (`ufw` или `nftables`).
+джейл переопределяет `logpath` на лог контейнера и `banaction` на
+`iptables-allports[chain="DOCKER-USER"]`. Порог: 5 отказов Basic Auth за
+10 минут → бан на час.
+
+Про `chain="DOCKER-USER"`: пакеты к опубликованным портам контейнера проходят
+через `FORWARD`/`DOCKER-USER`, а не через `INPUT`, поэтому стандартный бан
+`ufw`/`iptables -I INPUT` их не блокирует. Бан в `DOCKER-USER` работает и не
+затрагивает SSH на хосте.
 
 ## Проверка
 
