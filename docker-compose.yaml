@@ -50,6 +50,7 @@ services:
     build:
       context: ./admin
       dockerfile: Dockerfile.ovpn-admin
+      network: host   # npm ci / go mod — берём host-сеть, устойчивее к DNS в buildkit
     image: ovpn-stack/ovpn-admin:local
     restart: unless-stopped
     command: /app/ovpn-admin
