@@ -33,7 +33,9 @@ var (
 
 const (
 	statBucket     = "traffic_monthly"
+	dailyBucket    = "traffic_daily"
 	lastSeenBucket = "last_seen"
+	dailyKeepDays  = 45 // сколько дней истории держим в бакете traffic_daily
 )
 
 type monthBytes struct {
@@ -60,6 +62,9 @@ func newStatStore(path string) *statStore {
 	}
 	if err := db.Update(func(tx *bolt.Tx) error {
 		if _, e := tx.CreateBucketIfNotExists([]byte(statBucket)); e != nil {
+			return e
+		}
+		if _, e := tx.CreateBucketIfNotExists([]byte(dailyBucket)); e != nil {
 			return e
 		}
 		_, e := tx.CreateBucketIfNotExists([]byte(lastSeenBucket))
@@ -96,6 +101,7 @@ func (s *statStore) lastSeenOf(cn string) int64 {
 }
 
 func currentMonth() string { return time.Now().UTC().Format("2006-01") }
+func currentDay() string   { return time.Now().UTC().Format("2006-01-02") }
 
 // record вызывается на каждом опросе mgmt-интерфейса со списком активных клиентов.
 func (s *statStore) record(active []clientStatus) {
@@ -139,6 +145,7 @@ func (s *statStore) record(active []clientStatus) {
 		ovpnClientTrafficReceivedTotal.WithLabelValues(c.CommonName).Add(float64(dRx))
 		ovpnClientTrafficSentTotal.WithLabelValues(c.CommonName).Add(float64(dTx))
 		s.addToMonth(c.CommonName, dRx, dTx)
+		s.addToDay(c.CommonName, dRx, dTx)
 	}
 
 	// клиенты, которых больше нет онлайн — забываем сессионные счётчики,
@@ -174,6 +181,61 @@ func (s *statStore) addToMonth(cn string, dRx, dTx uint64) {
 	if err != nil {
 		log.Warnf("statistic: запись %s: %v", cn, err)
 	}
+}
+
+func (s *statStore) addToDay(cn string, dRx, dTx uint64) {
+	if s.db == nil {
+		return
+	}
+	day := currentDay()
+	cutoff := time.Now().UTC().AddDate(0, 0, -dailyKeepDays).Format("2006-01-02")
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(dailyBucket))
+		days := map[string]monthBytes{}
+		if raw := b.Get([]byte(cn)); raw != nil {
+			_ = json.Unmarshal(raw, &days)
+		}
+		for d := range days {
+			if d < cutoff {
+				delete(days, d)
+			}
+		}
+		mb := days[day]
+		mb.Rx += dRx
+		mb.Tx += dTx
+		days[day] = mb
+		enc, e := json.Marshal(days)
+		if e != nil {
+			return e
+		}
+		return b.Put([]byte(cn), enc)
+	})
+	if err != nil {
+		log.Warnf("statistic: запись дня %s: %v", cn, err)
+	}
+}
+
+// todayTotal — суммарный трафик всех клиентов за текущие сутки (UTC).
+func (s *statStore) todayTotal() (rx, tx uint64) {
+	if s == nil || s.db == nil {
+		return 0, 0
+	}
+	day := currentDay()
+	_ = s.db.View(func(dbtx *bolt.Tx) error {
+		b := dbtx.Bucket([]byte(dailyBucket))
+		return b.ForEach(func(k, v []byte) error {
+			days := map[string]monthBytes{}
+			if json.Unmarshal(v, &days) != nil {
+				return nil
+			}
+			if d, ok := days[day]; ok {
+				rx += d.Rx
+				tx += d.Tx
+			}
+			return nil
+		})
+	})
+	return rx, tx
 }
 
 type userMonthly struct {

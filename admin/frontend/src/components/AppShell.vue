@@ -6,7 +6,7 @@ import { useTheme } from '@/composables/useTheme'
 import { setLocale } from '@/i18n'
 
 const { t, locale } = useI18n()
-const { role, isSlave, lastSync } = useServerSettings()
+const { isSlave, lastSync } = useServerSettings()
 const { view, go } = useView()
 const { theme, toggle: toggleTheme } = useTheme()
 
@@ -20,7 +20,6 @@ function toggleLocale() {
   <header class="topbar">
     <div class="topbar-inner">
     <div class="brand">
-      <span class="glyph">ov</span>
       <span class="name">ovpn&#8209;admin</span>
     </div>
 
@@ -50,11 +49,6 @@ function toggleLocale() {
         <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
       </svg>
     </button>
-
-    <span class="role" :class="`role--${role}`">
-      <span class="dot" />
-      {{ role }}
-    </span>
     </div>
   </header>
 
@@ -86,22 +80,9 @@ function toggleLocale() {
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
   font-weight: 600;
   font-size: var(--fs-lg);
   letter-spacing: -0.01em;
-}
-.glyph {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: var(--r-sm);
-  background: linear-gradient(150deg, var(--accent), #2f7f99);
-  color: var(--accent-ink);
-  font-family: var(--mono);
-  font-weight: 600;
-  font-size: 14px;
 }
 .nav {
   display: flex;
@@ -156,30 +137,6 @@ function toggleLocale() {
   color: var(--text);
   border-color: var(--accent);
 }
-.role {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 11px 4px 9px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: var(--fs-xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  font-weight: 600;
-}
-.role .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ok);
-  box-shadow: 0 0 0 3px var(--ok-soft);
-}
-.role--slave .dot {
-  background: var(--warn);
-  box-shadow: 0 0 0 3px var(--warn-soft);
-}
 @media (max-width: 640px) {
   .page {
     padding: 14px 14px 48px;
@@ -190,13 +147,10 @@ function toggleLocale() {
     gap: 10px;
     padding: 11px 12px;
   }
-  /* строка 1: логотип слева, переключатели темы/языка и роль справа */
+  /* строка 1: название слева, переключатели темы/языка справа */
   .brand {
     flex: 1 1 auto;
     min-width: 0;
-  }
-  .brand .name {
-    display: none;
   }
   .spacer,
   .sync {

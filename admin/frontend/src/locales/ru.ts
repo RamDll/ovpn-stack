@@ -79,7 +79,7 @@ export default {
     server: 'Сервер',
     cpu: 'CPU',
     ram: 'ОЗУ',
-    traffic: 'Трафик, активные сессии',
+    trafficToday: 'Трафик за сегодня',
   },
   actions: {
     config: 'Конфиг',

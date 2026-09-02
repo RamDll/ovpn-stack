@@ -15,7 +15,6 @@ import { useUsers } from '@/composables/useUsers'
 import { useServerSettings } from '@/composables/useServerSettings'
 import { useServerStats } from '@/composables/useServerStats'
 import { useTraffic } from '@/composables/useTraffic'
-import { formatBytes } from '@/utils/format'
 
 const { t } = useI18n()
 const {
@@ -28,7 +27,7 @@ const { stats: sys, refresh: refreshSys } = useServerStats()
 const anyFilter = computed(
   () => !!search.value.trim() || filterOnline.value || filterRevoked.value,
 )
-const { byUser: trafficByUser, total: trafficTotal, refresh: refreshTraffic } = useTraffic()
+const { byUser: trafficByUser, refresh: refreshTraffic } = useTraffic()
 
 const connectedNames = computed(() =>
   users.value.filter((u) => u.ConnectionStatus === 'Connected').map((u) => u.Identity),
@@ -46,12 +45,6 @@ onMounted(() => {
   }, 15_000)
 })
 onBeforeUnmount(() => window.clearInterval(poll))
-
-const trafficLabel = computed(() => {
-  const tot = trafficTotal.value
-  if (tot.rx + tot.tx === 0) return '—'
-  return `${formatBytes(tot.rx)} ↓ · ${formatBytes(tot.tx)} ↑`
-})
 
 
 const addOpen = ref(false)
@@ -90,11 +83,7 @@ function onAction(action: RowAction, username: string) {
     <span class="count">{{ t('users.summary', { total: stats.total, online: stats.connected }) }}</span>
   </div>
 
-  <MetricStrip
-    :connected="stats.connected"
-    :traffic="trafficLabel"
-    :sys="sys"
-  />
+  <MetricStrip :connected="stats.connected" :sys="sys" />
 
   <p v-if="error" class="load-error">{{ t('users.loadError', { error }) }}</p>
 
