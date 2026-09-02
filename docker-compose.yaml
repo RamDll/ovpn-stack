@@ -160,6 +160,7 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
       - ./nginx/acme:/var/www/letsencrypt
+      - ./nginx/f2b-log:/var/log/f2b   # access/error лог для fail2ban на хосте
     networks:
       - ovpn-stack
 

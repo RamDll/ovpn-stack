@@ -32,12 +32,14 @@ ovpn-stack/
 │       └── dashboards/
 │           ├── ovpn-admin.json         клиенты, сроки сертификатов
 │           └── traffic.json            «OpenVPN — Трафик»: скорость и объёмы по клиентам
-└── nginx/
-    ├── Dockerfile             nginx-alpine + apache2-utils (генерация .htpasswd)
-    ├── 40-htpasswd.sh         генерит .htpasswd из BASIC_AUTH_* при старте
-    ├── conf.d/ovpn-admin.conf
-    ├── ssl/                   сюда положить fullchain.pem + privkey.pem (в .gitignore)
-    └── acme/                  webroot для ACME http-01 challenge (в .gitignore)
+├── nginx/
+│   ├── Dockerfile             nginx-alpine + apache2-utils (генерация .htpasswd)
+│   ├── 40-htpasswd.sh         генерит .htpasswd из BASIC_AUTH_* при старте
+│   ├── conf.d/ovpn-admin.conf
+│   ├── ssl/                   сюда положить fullchain.pem + privkey.pem (в .gitignore)
+│   ├── acme/                  webroot для ACME http-01 challenge (в .gitignore)
+│   └── f2b-log/               access/error лог для fail2ban (bind-mount, в .gitignore)
+└── fail2ban/                  jail + фильтр для бана перебора Basic Auth (ставится на хост)
 ```
 
 Рантайм-данные (`.env`, `data/` с PKI, `nginx/ssl/`, `nginx/.htpasswd`) в
@@ -163,6 +165,20 @@ docker compose down -v                                # + удалить дан�
 Для нестандартного размещения TLS (например, сертификат acme.sh с хоста)
 используйте локальный `docker-compose.override.yaml` — он не в репозитории.
 
+## Безопасность
+
+- Панель и Grafana закрыты Basic Auth на nginx; `.htpasswd` генерируется из
+  `.env` и не хранится в репозитории.
+- OpenVPN — только по клиентскому сертификату (`OVPN_AUTH: "false"`), `tls-crypt`,
+  `AES-256-GCM`, `auth SHA256`, `tls-version-min 1.2`.
+- Наружу открыты только 443/tcp, 80/tcp (редирект + ACME) и 7777/udp.
+- fail2ban (каталог `fail2ban/`): бан IP за перебор Basic Auth. Ставится на хост —
+  nginx дублирует лог в `nginx/f2b-log/`, jail читает его оттуда. Инструкция —
+  `fail2ban/README.md`.
+- Рекомендации для хоста: `unattended-upgrades` для авто-патчей безопасности,
+  SSH только по ключу (`PasswordAuthentication no`, `PermitRootLogin no`),
+  ufw с политикой `deny incoming`.
+
 ## Отличия от исходных репозиториев
 
 - Единый `docker-compose.yaml` вместо трёх; общая compose-сеть `ovpn-stack`
@@ -187,6 +203,8 @@ docker compose down -v                                # + удалить дан�
   работает и без BuildKit (для multi-arch BuildKit подставит реальную арку).
 - CI (`.github/workflows/ci.yml`): на каждый push/PR поднимает стек целиком и
   прогоняет smoke-проверки. Обновления зависимостей — через Dependabot.
+- Каталог `fail2ban/` + дублирование лога nginx в `nginx/f2b-log/` для бана
+  перебора Basic Auth (см. раздел «Безопасность»).
 
 ## Лицензия
 

@@ -8,6 +8,10 @@ nginx/ssl/*
 nginx/acme/*
 !nginx/acme/.gitkeep
 
+# Логи nginx для fail2ban (пишутся в рантайме)
+nginx/f2b-log/*
+!nginx/f2b-log/.gitkeep
+
 # Рантайм-данные OpenVPN: PKI (приватные ключи!), CCD, база пользователей
 data/
 
