@@ -325,6 +325,23 @@ func (oAdmin *OvpnAdmin) userRotateHandler(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+func (oAdmin *OvpnAdmin) userExtendHandler(w http.ResponseWriter, r *http.Request) {
+	log.Info(r.RemoteAddr, " ", r.RequestURI)
+	if oAdmin.role == "slave" {
+		http.Error(w, `{"status":"error"}`, http.StatusLocked)
+		return
+	}
+	_ = r.ParseForm()
+	expireDays, _ := strconv.Atoi(r.FormValue("expire"))
+	err, msg := oAdmin.userExtend(r.FormValue("username"), expireDays)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	} else {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, msg)
+	}
+}
+
 func (oAdmin *OvpnAdmin) userDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	log.Info(r.RemoteAddr, " ", r.RequestURI)
 	if oAdmin.role == "slave" {
@@ -593,6 +610,7 @@ func main() {
 	http.HandleFunc(*listenBaseUrl+"api/user/create", ovpnAdmin.userCreateHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/change-password", ovpnAdmin.userChangePasswordHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/rotate", ovpnAdmin.userRotateHandler)
+	http.HandleFunc(*listenBaseUrl+"api/user/extend", ovpnAdmin.userExtendHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/delete", ovpnAdmin.userDeleteHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/revoke", ovpnAdmin.userRevokeHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/unrevoke", ovpnAdmin.userUnrevokeHandler)
@@ -1294,6 +1312,69 @@ func (oAdmin *OvpnAdmin) userRotate(username, newPassword string, certExpireDays
 		return nil, fmt.Sprintf("{\"msg\":\"User %s successfully rotated\"}", username)
 	}
 	return errors.New(fmt.Sprintf("user \"%s\" not found", username)), fmt.Sprintf("{\"msg\":\"User \"%s\" not found\"}", username)
+}
+
+// userExtend продлевает сертификат через `easyrsa renew`: приватный ключ остаётся
+// прежним, выпускается новый сертификат с новым сроком. Старый сертификат НЕ
+// отзывается (в CRL не попадает) — клиент продолжает подключаться, пока старый не
+// истечёт; новый .ovpn нужно занести до этого момента. В index.txt старая запись
+// переименовывается (префикс REVOKED-...-renewed), чтобы в списке остался один
+// активный сертификат с этим CN.
+func (oAdmin *OvpnAdmin) userExtend(username string, certExpireDays int) (error, string) {
+	if !checkUserExist(username) {
+		return errors.New(fmt.Sprintf("user \"%s\" not found", username)),
+			fmt.Sprintf("{\"msg\":\"User \"%s\" not found\"}", username)
+	}
+	if *storageBackend == "kubernetes.secrets" {
+		return errors.New("renew is not supported with the kubernetes.secrets storage backend"),
+			"{\"msg\":\"renew is not supported with this storage backend\"}"
+	}
+
+	oAdmin.createUserMutex.Lock()
+	defer oAdmin.createUserMutex.Unlock()
+
+	var oldSerial string
+	for _, l := range indexTxtParser(fRead(*indexTxtPath)) {
+		if l.DistinguishedName == "/CN="+username && l.Flag == "V" {
+			oldSerial = l.SerialNumber
+			break
+		}
+	}
+	if oldSerial == "" {
+		return errors.New(fmt.Sprintf("no active certificate for \"%s\"", username)),
+			"{\"msg\":\"no active certificate to extend\"}"
+	}
+
+	expireEnv := ""
+	if certExpireDays >= 1 && certExpireDays <= 3650 {
+		expireEnv = fmt.Sprintf("EASYRSA_CERT_EXPIRE=%d ", certExpireDays)
+	}
+	o := runBash(fmt.Sprintf("cd %s && %s%s --batch renew %s 1>/dev/null", *easyrsaDirPath, expireEnv, *easyrsaBinPath, username))
+	log.Debug(o)
+
+	// после renew в index.txt две записи /CN=<username> (V) — прячем старую по серийнику
+	uniqHash := strings.Replace(uuid.New().String(), "-", "", -1)
+	lines := indexTxtParser(fRead(*indexTxtPath))
+	renewed := false
+	for i := range lines {
+		if lines[i].SerialNumber == oldSerial {
+			lines[i].DistinguishedName = "/CN=REVOKED-" + username + "-renewed-" + uniqHash
+			renewed = true
+			break
+		}
+	}
+	if !renewed {
+		return errors.New(fmt.Sprintf("renew of \"%s\" failed", username)),
+			"{\"msg\":\"renew failed\"}"
+	}
+	if err := fWrite(*indexTxtPath, renderIndexTxt(lines)); err != nil {
+		log.Error(err)
+	}
+
+	_ = runBash(fmt.Sprintf("cd %s && %s gen-crl 1>/dev/null", *easyrsaDirPath, *easyrsaBinPath))
+	crlFix()
+	oAdmin.clients = oAdmin.usersList()
+	return nil, fmt.Sprintf("{\"msg\":\"Сертификат %s продлён\"}", username)
 }
 
 func (oAdmin *OvpnAdmin) userDelete(username string) (error, string) {
