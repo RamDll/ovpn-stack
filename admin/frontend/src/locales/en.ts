@@ -98,6 +98,8 @@ export default {
     nameHint: 'a-z A-Z 0-9 . _ - @',
     nameError: 'Name: only a-z A-Z 0-9 . _ - @',
     password: 'Password',
+    expire: 'Certificate validity, days',
+    expireHint: 'default 825 (~2 years), max 3650',
     submit: 'Create & issue certificate',
     submitting: 'Creating…',
   },

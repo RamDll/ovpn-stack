@@ -296,7 +296,8 @@ func (oAdmin *OvpnAdmin) userCreateHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	_ = r.ParseForm()
-	userCreated, userCreateStatus := oAdmin.userCreate(r.FormValue("username"), r.FormValue("password"))
+	expireDays, _ := strconv.Atoi(r.FormValue("expire"))
+	userCreated, userCreateStatus := oAdmin.userCreate(r.FormValue("username"), r.FormValue("password"), expireDays)
 
 	if userCreated {
 		oAdmin.clients = oAdmin.usersList()
@@ -314,7 +315,8 @@ func (oAdmin *OvpnAdmin) userRotateHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	_ = r.ParseForm()
-	err, msg := oAdmin.userRotate(r.FormValue("username"), r.FormValue("password"))
+	expireDays, _ := strconv.Atoi(r.FormValue("expire"))
+	err, msg := oAdmin.userRotate(r.FormValue("username"), r.FormValue("password"), expireDays)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	} else {
@@ -1030,7 +1032,9 @@ func (oAdmin *OvpnAdmin) usersList() []OpenvpnClient {
 	return users
 }
 
-func (oAdmin *OvpnAdmin) userCreate(username, password string) (bool, string) {
+// certExpireDays определяет срок действия клиентского сертификата в днях.
+// 0 (или значение вне диапазона 1..3650) — использовать дефолт easyrsa.
+func (oAdmin *OvpnAdmin) userCreate(username, password string, certExpireDays int) (bool, string) {
 	ucErr := fmt.Sprintf("User \"%s\" created", username)
 
 	oAdmin.createUserMutex.Lock()
@@ -1061,7 +1065,11 @@ func (oAdmin *OvpnAdmin) userCreate(username, password string) (bool, string) {
 			return false, err.Error()
 		}
 	} else {
-		o := runBash(fmt.Sprintf("cd %s && %s --batch build-client-full %s nopass 1>/dev/null", *easyrsaDirPath, *easyrsaBinPath, username))
+		expireEnv := ""
+		if certExpireDays >= 1 && certExpireDays <= 3650 {
+			expireEnv = fmt.Sprintf("EASYRSA_CERT_EXPIRE=%d ", certExpireDays)
+		}
+		o := runBash(fmt.Sprintf("cd %s && %s%s --batch build-client-full %s nopass 1>/dev/null", *easyrsaDirPath, expireEnv, *easyrsaBinPath, username))
 		log.Debug(o)
 	}
 
@@ -1214,7 +1222,7 @@ func (oAdmin *OvpnAdmin) userUnrevoke(username string) (error, string) {
 	return errors.New(fmt.Sprintf("user \"%s\" not found", username)), fmt.Sprintf("{\"msg\":\"User \"%s\" not found\"}", username)
 }
 
-func (oAdmin *OvpnAdmin) userRotate(username, newPassword string) (error, string) {
+func (oAdmin *OvpnAdmin) userRotate(username, newPassword string, certExpireDays int) (error, string) {
 	if checkUserExist(username) {
 		if *storageBackend == "kubernetes.secrets" {
 			err := app.easyrsaRotate(username, newPassword)
@@ -1247,7 +1255,7 @@ func (oAdmin *OvpnAdmin) userRotate(username, newPassword string) (error, string
 				log.Debug(o)
 			}
 
-			userCreated, userCreateMessage := oAdmin.userCreate(username, newPassword)
+			userCreated, userCreateMessage := oAdmin.userCreate(username, newPassword, certExpireDays)
 			if !userCreated {
 				usersFromIndexTxt = indexTxtParser(fRead(*indexTxtPath))
 				for i := range usersFromIndexTxt {

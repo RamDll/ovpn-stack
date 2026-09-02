@@ -19,14 +19,14 @@ export function useUserActions() {
   }
 
   return {
-    create: (username: string, password: string) =>
-      run(() => ovpn.createUser(username, password), 'toast.userCreated', username),
+    create: (username: string, password: string, expireDays = 0) =>
+      run(() => ovpn.createUser(username, password, expireDays), 'toast.userCreated', username),
 
     changePassword: (username: string, password: string) =>
       run(() => ovpn.changePassword(username, password), 'toast.passwordChanged', username),
 
-    rotate: (username: string, password: string) =>
-      run(() => ovpn.rotateUser(username, password), 'toast.certRotated', username),
+    rotate: (username: string, password: string, expireDays = 0) =>
+      run(() => ovpn.rotateUser(username, password, expireDays), 'toast.certRotated', username),
 
     remove: (username: string) =>
       run(() => ovpn.deleteUser(username), 'toast.userDeleted', username),
