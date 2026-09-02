@@ -88,15 +88,9 @@ export default {
     disconnect: 'Отключить',
     revoke: 'Отозвать',
     unrevoke: 'Восстановить',
-    extend: 'Продлить',
     rotate: 'Перевыпустить',
     delete: 'Удалить',
     menu: 'Действия',
-  },
-  extend: {
-    title: 'Продлить сертификат',
-    note: 'Приватный ключ не меняется. Старый сертификат продолжит работать до своей даты — занесите новый .ovpn клиенту до этого момента.',
-    submit: 'Продлить',
   },
   addUser: {
     title: 'Новый пользователь',
@@ -165,7 +159,6 @@ export default {
     userCreated: 'Пользователь {name} создан',
     passwordChanged: 'Пароль {name} изменён',
     certRotated: 'Сертификаты {name} перевыпущены',
-    certExtended: 'Сертификат {name} продлён',
     userDeleted: 'Пользователь {name} удалён',
     userRevoked: 'Пользователь {name} отозван',
     userUnrevoked: 'Пользователь {name} восстановлен',

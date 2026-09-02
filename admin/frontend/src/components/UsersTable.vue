@@ -18,7 +18,6 @@ export type RowAction =
   | 'change-password'
   | 'revoke'
   | 'unrevoke'
-  | 'extend'
   | 'rotate'
   | 'delete'
   | 'download-config'
@@ -78,7 +77,6 @@ const ACTIONS: ActionDef[] = [
   { action: 'download-config', key: 'actions.config', when: (r) => r.AccountStatus === 'Active', roles: ['master', 'slave'], module: 'core' },
   { action: 'edit-ccd', key: 'actions.routes', when: (r) => r.AccountStatus === 'Active', roles: ['master', 'slave'], module: 'ccd' },
   { action: 'change-password', key: 'actions.password', when: (r) => r.AccountStatus === 'Active', roles: ['master'], module: 'passwdAuth' },
-  { action: 'extend', key: 'actions.extend', when: (r) => r.AccountStatus === 'Active', roles: ['master'], module: 'core' },
   { action: 'disconnect', key: 'actions.disconnect', tone: 'warn', when: (r) => r.ConnectionStatus === 'Connected', roles: ['master'], module: 'core' },
   { action: 'revoke', key: 'actions.revoke', tone: 'warn', when: (r) => r.AccountStatus === 'Active', roles: ['master'], module: 'core' },
   { action: 'unrevoke', key: 'actions.unrevoke', when: (r) => r.AccountStatus === 'Revoked', roles: ['master'], module: 'core' },

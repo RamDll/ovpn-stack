@@ -6,7 +6,6 @@ import UsersTable from './UsersTable.vue'
 import type { RowAction } from './UsersTable.vue'
 import AddUserModal from './modals/AddUserModal.vue'
 import PasswordModal from './modals/PasswordModal.vue'
-import ExtendModal from './modals/ExtendModal.vue'
 import ConfirmModal from './modals/ConfirmModal.vue'
 import type { ConfirmKind } from './modals/ConfirmModal.vue'
 import ConfigModal from './modals/ConfigModal.vue'
@@ -50,7 +49,6 @@ onBeforeUnmount(() => window.clearInterval(poll))
 
 const addOpen = ref(false)
 const pwd = shallowRef<{ mode: 'change' | 'rotate'; username: string } | null>(null)
-const extendUser = shallowRef<string | null>(null)
 const confirm = shallowRef<{ kind: ConfirmKind; username: string } | null>(null)
 const cfg = shallowRef<string | null>(null)
 const ccd = shallowRef<string | null>(null)
@@ -62,9 +60,6 @@ function onAction(action: RowAction, username: string) {
       break
     case 'rotate':
       pwd.value = { mode: 'rotate', username }
-      break
-    case 'extend':
-      extendUser.value = username
       break
     case 'revoke':
     case 'unrevoke':
@@ -128,13 +123,6 @@ function onAction(action: RowAction, username: string) {
     :mode="pwd.mode"
     :ask-password="hasModule('passwdAuth')"
     @update:open="pwd = null"
-  />
-
-  <ExtendModal
-    v-if="extendUser"
-    :open="true"
-    :username="extendUser"
-    @update:open="extendUser = null"
   />
 
   <ConfirmModal
