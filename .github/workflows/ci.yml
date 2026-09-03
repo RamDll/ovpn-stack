@@ -51,25 +51,7 @@ jobs:
           test "$(curl -sk -o /dev/null -w '%{http_code}' \
                   -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASSWORD" https://localhost/)" = 200
 
-          # Grafana доступна через sub-path /grafana/
-          for i in $(seq 12); do
-            curl -sk -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASSWORD" \
-                 https://localhost/grafana/api/health | grep -q '"database": *"ok"' && break
-            echo "ждём Grafana ($i)…"; sleep 5
-          done
-          curl -fsk -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASSWORD" https://localhost/grafana/api/health
-
-          # Prometheus видит все таргеты в состоянии up
-          for i in $(seq 12); do
-            up=$(docker compose exec -T prometheus \
-                   wget -qO- 'http://localhost:9090/api/v1/targets?state=active' \
-                 | grep -o '"health":"up"' | wc -l)
-            [ "$up" -ge 3 ] && break
-            echo "ждём scrape Prometheus ($i)…"; sleep 5
-          done
-          [ "$up" -ge 3 ]
-
-          # ovpn-admin отдаёт свои метрики
+          # ovpn-admin отдаёт метрики Prometheus (эндпоинт есть, но снаружи не скрейпится)
           docker compose exec -T ovpn-admin \
             wget -qO- http://127.0.0.1:8080/metrics | grep -q '^ovpn_'
 

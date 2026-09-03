@@ -27,7 +27,6 @@ export default {
     received: 'принято',
     sent: 'отдано',
     empty: 'Данных пока нет — накопится по мере трафика.',
-    openGrafana: 'Подробнее в Grafana',
     loadError: 'Не удалось загрузить статистику',
   },
   shell: {

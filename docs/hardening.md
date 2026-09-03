@@ -8,13 +8,12 @@
 
 Действий не требует, просто держите в уме:
 
-- Панель и Grafana — за Basic Auth на nginx, `.htpasswd` собирается из `.env`
-  при старте и в репозиторий не попадает.
-- OpenVPN — только по клиентскому сертификату (`OVPN_AUTH: "false"`),
-  `tls-crypt`, `AES-256-GCM`, `auth SHA256`, `tls-version-min 1.2`.
-- Наружу публикуются только `80/tcp`, `443/tcp`, `7777/udp`. Внутренние сервисы
-  (`ovpn-admin:8080`, `grafana:3000`, `prometheus:9090`, `node-exporter:9100`)
-  живут в compose-сети и наружу не выставляются.
+- Панель — за Basic Auth на nginx, `.htpasswd` собирается из `.env` при старте
+  и в репозиторий не попадает.
+- OpenVPN — только по клиентскому сертификату (EC prime256v1), `tls-crypt`,
+  `AES-256-GCM`, `auth SHA256`, `tls-version-min 1.2`.
+- Наружу публикуются только `80/tcp`, `443/tcp`, `7777/udp`. `ovpn-admin:8080`
+  живёт в compose-сети и наружу не выставляется.
 - `.env` с паролями — держите `chmod 600`, владелец root.
 
 ## 1. Firewall (ufw)

@@ -1,10 +1,10 @@
 name: ovpn-stack
 
-# Единый стек: OpenVPN + ovpn-admin + Prometheus + Grafana + nginx.
+# Стек: OpenVPN + веб-панель ovpn-admin + nginx.
 # Поднимается одной командой:  docker compose up -d
 #
 # Секреты берутся из .env (см. .env.example). Наружу торчит только nginx
-# (80/443) и UDP-порт OpenVPN (7777). Панель ovpn-admin и Grafana доступны
+# (80/443) и UDP-порт OpenVPN (7777). Панель ovpn-admin доступна
 # исключительно через nginx с TLS + Basic Auth.
 
 # Ротация логов Docker для всех сервисов: 3 файла по 10 МБ.
@@ -50,8 +50,8 @@ services:
       start_period: 30s
 
   # ---------------------------------------------------------------------------
-  # ovpn-admin — веб-панель управления, метрики Prometheus на :8080/metrics.
-  # Делит сетевой namespace с openvpn (доступ к mgmt-интерфейсу 127.0.0.1:8989).
+  # ovpn-admin — веб-панель управления. Делит сетевой namespace с openvpn
+  # (доступ к mgmt-интерфейсу 127.0.0.1:8989).
   # ---------------------------------------------------------------------------
   ovpn-admin:
     build:
@@ -89,65 +89,7 @@ services:
       start_period: 40s
 
   # ---------------------------------------------------------------------------
-  # Prometheus — скрейпит ovpn-admin (openvpn:8080) и node-exporter. Хранение 365д.
-  # ---------------------------------------------------------------------------
-  prometheus:
-    image: prom/prometheus:v3.6.0
-    restart: unless-stopped
-    logging: *default-logging
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=365d"
-    volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    networks:
-      - ovpn-stack
-
-  # ---------------------------------------------------------------------------
-  # Grafana — datasource и дашборд ovpn-admin провижнятся автоматически.
-  # Отдаётся из-под nginx по пути /grafana/.
-  # ---------------------------------------------------------------------------
-  grafana:
-    image: grafana/grafana:12.1.0
-    restart: unless-stopped
-    logging: *default-logging
-    depends_on:
-      - prometheus
-    environment:
-      GF_SERVER_ROOT_URL: "https://${VPS_PUBLIC_IP}/grafana/"
-      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
-      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
-      GF_USERS_ALLOW_SIGN_UP: "false"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    networks:
-      - ovpn-stack
-
-  # ---------------------------------------------------------------------------
-  # node-exporter — метрики хоста (CPU/RAM/диск/аптайм).
-  # ---------------------------------------------------------------------------
-  node-exporter:
-    image: prom/node-exporter:v1.9.1
-    restart: unless-stopped
-    logging: *default-logging
-    command:
-      - "--path.procfs=/host/proc"
-      - "--path.sysfs=/host/sys"
-      - "--path.rootfs=/rootfs"
-      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    networks:
-      - ovpn-stack
-
-  # ---------------------------------------------------------------------------
-  # nginx — reverse proxy: TLS + Basic Auth, / -> ovpn-admin, /grafana/ -> Grafana.
+  # nginx — reverse proxy: TLS + Basic Auth, / -> ovpn-admin.
   # .htpasswd генерируется из BASIC_AUTH_* при старте (см. nginx/Dockerfile).
   # ---------------------------------------------------------------------------
   nginx:
@@ -158,7 +100,6 @@ services:
     logging: *default-logging
     depends_on:
       - ovpn-admin
-      - grafana
     environment:
       BASIC_AUTH_USER: "${BASIC_AUTH_USER}"
       BASIC_AUTH_PASSWORD: "${BASIC_AUTH_PASSWORD}"
@@ -176,7 +117,3 @@ services:
 networks:
   ovpn-stack:
     driver: bridge
-
-volumes:
-  prometheus_data:
-  grafana_data:

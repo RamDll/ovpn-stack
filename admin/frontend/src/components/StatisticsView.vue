@@ -108,7 +108,6 @@ function monthLabel(m: string) {
 <template>
   <div class="page-head">
     <h1>{{ t('stats.title') }}</h1>
-    <a class="grafana" href="./grafana/d/ovpn-traffic" target="_blank" rel="noopener">{{ t('stats.openGrafana') }} →</a>
   </div>
 
   <ServerCard />
@@ -193,10 +192,6 @@ function monthLabel(m: string) {
 
 <style scoped>
 .page-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 14px;
   margin-bottom: 18px;
 }
 .page-head h1 {
@@ -204,10 +199,6 @@ function monthLabel(m: string) {
   font-size: var(--fs-xl);
   font-weight: 600;
   letter-spacing: -0.01em;
-}
-.grafana {
-  font-size: var(--fs-sm);
-  font-weight: 600;
 }
 .muted {
   color: var(--text-faint);
