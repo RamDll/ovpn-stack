@@ -27,7 +27,6 @@ export default {
     received: 'received',
     sent: 'sent',
     empty: 'No data yet — it accumulates as traffic flows.',
-    openGrafana: 'Open in Grafana',
     loadError: 'Could not load statistics',
   },
   shell: {

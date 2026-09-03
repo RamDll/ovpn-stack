@@ -1,22 +1,20 @@
 # ovpn-stack
 
-Единый стек для self-hosted OpenVPN с веб-панелью и мониторингом. После
-подготовки `.env` и TLS-сертификата поднимается одной командой
-`docker compose up -d --build`.
+Self-hosted OpenVPN с веб-панелью управления. После подготовки `.env` и
+TLS-сертификата поднимается одной командой `docker compose up -d --build`.
 
-Объединяет три ранее раздельных репозитория:
+Собран из двух ранее раздельных репозиториев:
 
-| Каталог       | Источник                                                            | Роль |
-|---------------|--------------------------------------------------------------------|------|
-| `admin/`      | [ovpn-admin-hardened](https://github.com/RamDll/ovpn-admin-hardened) | OpenVPN-сервер (hardened) + панель управления ovpn-admin |
-| `monitoring/` | [openvpn-monitoring](https://github.com/RamDll/openvpn-monitoring)   | Prometheus + Grafana + node-exporter |
-| `nginx/`      | [vps-nginx-config](https://github.com/RamDll/vps-nginx-config)       | reverse proxy: TLS + Basic Auth |
+| Каталог  | Источник                                                              | Роль |
+|----------|---------------------------------------------------------------------|------|
+| `admin/` | [ovpn-admin-hardened](https://github.com/RamDll/ovpn-admin-hardened) | OpenVPN-сервер (hardened) + панель управления ovpn-admin |
+| `nginx/` | [vps-nginx-config](https://github.com/RamDll/vps-nginx-config)       | reverse proxy: TLS + Basic Auth |
 
 ## Что внутри
 
 ```
 ovpn-stack/
-├── docker-compose.yaml        стек: openvpn + ovpn-admin + prometheus + grafana + node-exporter + nginx
+├── docker-compose.yaml        стек: openvpn + ovpn-admin + nginx
 ├── .env.example               шаблон секретов (скопировать в .env)
 ├── .github/                   CI (docker compose smoke test) + конфиг Dependabot
 ├── docs/hardening.md          чек-лист хардненинга хоста
@@ -26,13 +24,6 @@ ovpn-stack/
 │   ├── *.go                      бэкенд панели
 │   ├── frontend/                 панель: Vue 3 + Vite + TypeScript (переписана с нуля, v3)
 │   └── setup/                    configure.sh — генерация PKI и конфига при первом старте
-├── monitoring/
-│   ├── prometheus/prometheus.yml       скрейп ovpn-admin, node-exporter, самого Prometheus
-│   └── grafana/
-│       ├── provisioning/               datasource Prometheus + провайдер дашбордов (авто)
-│       └── dashboards/
-│           ├── ovpn-admin.json         клиенты, сроки сертификатов
-│           └── traffic.json            «OpenVPN — Трафик»: скорость и объёмы по клиентам
 ├── nginx/
 │   ├── Dockerfile             nginx-alpine + apache2-utils (генерация .htpasswd)
 │   ├── 40-htpasswd.sh         генерит .htpasswd из BASIC_AUTH_* при старте
@@ -58,10 +49,12 @@ ovpn-stack/
 - локализация ru/en, переключатели языка и темы в шапке;
 - плитка «Сервер»: имя хоста, загрузка CPU, память (эндпоинт `api/server/stats`);
 - страница «Статистика»: помесячный трафик (учёт в bbolt-хранилище `data/stat/traffic.db`),
-  сводка, разбивка по клиентам, ссылка в Grafana.
+  сводка, разбивка по клиентам.
 
 Бэкенд отдаёт метрики Prometheus по `:8080/metrics` (подключённые клиенты, сроки
-годности CA и серверного сертификата, счётчики трафика `ovpn_client_traffic_*`).
+годности CA и серверного сертификата, счётчики трафика `ovpn_client_traffic_*`) —
+эндпоинт есть, но наружу не публикуется и никем не скрейпится. Подключите внешний
+Prometheus, если нужны исторические графики.
 
 ## Сеть и порты
 
@@ -69,15 +62,13 @@ ovpn-stack/
 
 | Порт        | Сервис  | Назначение |
 |-------------|---------|------------|
-| `443/tcp`   | nginx   | панель ovpn-admin (`/`) и Grafana (`/grafana/`), TLS + Basic Auth |
+| `443/tcp`   | nginx   | панель ovpn-admin (`/`), TLS + Basic Auth |
 | `80/tcp`    | nginx   | редирект на HTTPS + ACME challenge |
 | `7777/udp`  | openvpn | OpenVPN |
 
-Всё остальное (`ovpn-admin:8080`, `grafana:3000`, `prometheus:9090`,
-`node-exporter:9100`) живёт во внутренней сети стека `ovpn-stack` и наружу
-не выставляется. `ovpn-admin` делит сетевой namespace с `openvpn`
-(`network_mode: service:openvpn`), поэтому его метрики Prometheus скрейпит
-по адресу `openvpn:8080`.
+`ovpn-admin:8080` живёт во внутренней сети стека `ovpn-stack` и наружу не
+выставляется. `ovpn-admin` делит сетевой namespace с `openvpn`
+(`network_mode: service:openvpn`) ради доступа к mgmt-интерфейсу `127.0.0.1:8989`.
 
 ## Порядок запуска
 
@@ -85,7 +76,7 @@ ovpn-stack/
 
 ```bash
 cp .env.example .env
-# отредактируйте: VPS_PUBLIC_IP, BASIC_AUTH_USER/PASSWORD, GRAFANA_ADMIN_PASSWORD
+# отредактируйте: VPS_PUBLIC_IP, BASIC_AUTH_USER / BASIC_AUTH_PASSWORD
 ```
 
 Необязательная переменная `OVPN_SERVER_NAME` переопределяет имя сервера в плитке
@@ -130,19 +121,17 @@ docker compose up -d --build
 ```bash
 docker compose ps          # все сервисы Up, openvpn/ovpn-admin — healthy
 set -a; . ./.env; set +a
-curl -sk -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASSWORD" https://<IP>/grafana/api/health
+curl -sk -o /dev/null -w '%{http_code}\n' \
+  -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASSWORD" https://<IP>/   # 200
 ```
 
-Панель: `https://<IP>/` · Grafana: `https://<IP>/grafana/` (обе за Basic Auth).
-В Grafana datasource Prometheus и дашборды **Ovpn-Admin** и **OpenVPN — Трафик**
-уже подключены.
+Панель: `https://<IP>/` (за Basic Auth).
 
 ## Обновление / остановка
 
 ```bash
-git pull && docker compose up -d --build              # подтянуть изменения и пересобрать
-docker compose down                                   # остановить (данные в volume сохраняются)
-docker compose down -v                                # + удалить данные Prometheus/Grafana
+git pull && docker compose up -d --build   # подтянуть изменения и пересобрать
+docker compose down                        # остановить (PKI в ./data/ сохраняется)
 ```
 
 Данные OpenVPN лежат в `./data/` (в `.gitignore`): `easyrsa/` — PKI с приватными
@@ -152,24 +141,21 @@ docker compose down -v                                # + удалить дан�
 ## Развёртывание на новом сервере
 
 `git clone` + шаги 1–3 выше поднимают **новый** VPN: контейнер `openvpn`
-сгенерирует собственный CA и серверный сертификат, `.htpasswd` соберётся из `.env`,
-дашборды Grafana подключатся провижнингом.
+сгенерирует собственный CA и серверный сертификат, `.htpasswd` соберётся из `.env`.
 
 **Чтобы перенести существующий сервер** (сохранив рабочие клиентские `.ovpn`),
 до первого `up` скопируйте со старой машины:
 
 - `data/easyrsa/` и `data/ccd/` — тот же CA и сертификаты клиентов;
-- `data/stat/traffic.db` — если нужна история трафика;
-- volume'ы `ovpn-stack_grafana_data` / `ovpn-stack_prometheus_data` — если нужна
-  история графиков (сами дашборды и datasource и так из репозитория).
+- `data/stat/traffic.db` — если нужна история трафика.
 
 Для нестандартного размещения TLS (например, сертификат acme.sh с хоста)
 используйте локальный `docker-compose.override.yaml` — он не в репозитории.
 
 ## Безопасность
 
-- Панель и Grafana закрыты Basic Auth на nginx; `.htpasswd` генерируется из
-  `.env` и не хранится в репозитории.
+- Панель закрыта Basic Auth на nginx; `.htpasswd` генерируется из `.env` и не
+  хранится в репозитории.
 - OpenVPN — только по клиентскому сертификату (EC prime256v1), `tls-crypt`,
   `AES-256-GCM`, `auth SHA256`, `tls-version-min 1.2`.
 - Наружу открыты только 443/tcp, 80/tcp (редирект + ACME) и 7777/udp.
@@ -181,29 +167,23 @@ docker compose down -v                                # + удалить дан�
 
 ## Отличия от исходных репозиториев
 
-- Единый `docker-compose.yaml` вместо трёх; общая compose-сеть `ovpn-stack`
-  вместо внешней `openvpn-master_default`.
-- Всем сервисам добавлен `restart: unless-stopped`.
+- Единый `docker-compose.yaml` вместо раздельных; общая compose-сеть `ovpn-stack`.
+- Всем сервисам добавлен `restart: unless-stopped` и ротация логов Docker
+  (`json-file`, 10 МБ × 3).
 - Healthcheck для `openvpn` (`pidof openvpn`) и `ovpn-admin` (HTTP `:8080/`).
-- Секреты (Basic Auth, пароль Grafana) вынесены в `.env`; `.htpasswd`
-  генерируется из него при старте nginx и не хранится в репозитории.
-- nginx контейнеризован; проксирует на имена сервисов (`openvpn:8080`,
-  `grafana:3000`) вместо `127.0.0.1`, с TLS 1.2/1.3 и HSTS.
-- Grafana datasource и дашборды провижнятся автоматически; `ovpn-admin.json`
-  перенесён из `ovpn-admin-hardened/dashboard/`, добавлен `traffic.json`
-  (переменная datasource запинена на `uid=prometheus`).
+- Секреты (Basic Auth) вынесены в `.env`; `.htpasswd` генерируется из него при
+  старте nginx и не хранится в репозитории.
+- nginx контейнеризован; проксирует на имя сервиса (`openvpn:8080`) вместо
+  `127.0.0.1`, с TLS 1.2/1.3 и HSTS.
 - Фронтенд панели переписан с нуля (Vue 3 + Vite + TypeScript, i18n ru/en,
   тёмная/светлая темы, страница «Статистика»).
 - Помесячный учёт трафика: bbolt-хранилище `data/stat/traffic.db`, эндпоинт
   `api/statistic`, счётчики Prometheus `ovpn_client_traffic_{received,sent}_total`.
 - `openvpn`: добавлен `sysctl net.ipv4.ip_forward=1` (нужен для redirect-gateway).
-- Образы `prometheus` / `grafana` / `node-exporter` запинены на конкретные
-  версии вместо `:latest`.
 - CI (`.github/workflows/ci.yml`): на каждый push/PR поднимает стек целиком и
   прогоняет smoke-проверки. Обновления зависимостей — через Dependabot.
 - Каталог `fail2ban/` + дублирование лога nginx в `nginx/f2b-log/` для бана
   перебора Basic Auth (см. раздел «Безопасность»).
-- Всем сервисам — ротация логов Docker (`json-file`, 10 МБ × 3).
 
 ### Выпилено из форка `admin/`
 
@@ -223,10 +203,18 @@ docker compose down -v                                # + удалить дан�
   `werf.yaml`) и материалы README апстрима.
 - Сборка `ovpn-admin` переведена на `CGO_ENABLED=0` (образ 98 → 43 МБ).
 
+### Выпилен мониторинг
+
+Убраны Prometheus, Grafana и node-exporter (каталог `monitoring/`, ~1.4 ГБ
+образов, ~250 МБ RAM). Мгновенное состояние (CPU/ОЗУ/загрузка, онлайн, трафик
+за сессию) и помесячный учёт трафика по клиентам остаются в панели — они не
+зависели от Prometheus. Потеряны только исторические графики во времени;
+эндпоинт `:8080/metrics` сохранён для внешнего Prometheus при желании.
+
 ## Лицензия
 
-Код этого репозитория (compose-стек, конфигурация nginx, фронтенд панели,
-дашборды) — [MIT](LICENSE).
+Код этого репозитория (compose-стек, конфигурация nginx, фронтенд панели) —
+[MIT](LICENSE).
 
 Каталог `admin/` — форк [palark/ovpn-admin](https://github.com/palark/ovpn-admin),
 распространяется под Apache License 2.0 (`admin/LICENSE`).
