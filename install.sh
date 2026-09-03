@@ -550,8 +550,17 @@ setup_acme() {
     info "IP-сертификат: профиль 'shortlived' (~6 дней, авто-renew через крон acme.sh)"
   fi
 
-  local rc=0
-  "$acme" "${issue_args[@]}" >/tmp/acme-issue.log 2>&1 || rc=$?
+  # accountDoesNotExist сразу после регистрации и прочие временные 5xx/JWS от
+  # Let's Encrypt лечатся повтором — даём до трёх попыток.
+  local rc=0 attempt
+  for attempt in 1 2 3; do
+    rc=0
+    "$acme" "${issue_args[@]}" >/tmp/acme-issue.log 2>&1 || rc=$?
+    (( rc == 0 || rc == 2 )) && break
+    (( attempt == 3 )) && break
+    warn "acme.sh: попытка $attempt не удалась (код $rc) — повтор через 15 с"
+    sleep 15
+  done
   case "$rc" in
     0)
       ok "сертификат выпущен и подставлен, nginx перезагружен"
@@ -586,24 +595,67 @@ setup_fail2ban() {
 
 # ---------------------------------------------------------------------------
 summary() {
-  local url="https://$ADDR/"
   step "Готово"
-  cat <<EOF
-    Панель:    $url        (Basic Auth: $PANEL_USER / см. $INSTALL_DIR/.env)
-    OpenVPN:   $ADDR:$OVPN_PORT/udp
-    Каталог:   $INSTALL_DIR
-    Управление:
-      cd $INSTALL_DIR && docker compose ps
-      docker compose logs -f ovpn-admin
-      git pull && docker compose up -d --build     # обновить
 
-    PKI и учёт трафика — в $INSTALL_DIR/data/ (в .gitignore). ЗАБЭКАПЬ этот каталог.
+  local url="https://$ADDR/" u p
+  # логин/пароль — из .env (источник истины; на повторном запуске переменные
+  # PANEL_* могут не совпадать с уже записанным .env)
+  u="$(sed -n 's/^BASIC_AUTH_USER=//p'     "$INSTALL_DIR/.env" 2>/dev/null)"; u="${u:-$PANEL_USER}"
+  p="$(sed -n 's/^BASIC_AUTH_PASSWORD=//p' "$INSTALL_DIR/.env" 2>/dev/null)"; p="${p:-$PANEL_PASS}"
 
-    Дальше:
-      - зайди в панель, создай пользователя, скачай .ovpn
-      - хардненинг хоста: $INSTALL_DIR/docs/hardening.md
+  local tls="Let's Encrypt"
+  (( DO_ACME )) || tls="self-signed (браузер будет ругаться на сертификат)"
+
+  local text
+  text="$(cat <<EOF
+ovpn-stack — доступ и памятка
+=============================
+
+Панель управления
+  Адрес:  $url
+  Логин:  $u
+  Пароль: $p
+  (Basic Auth — окно входа в браузере)
+
+OpenVPN
+  Сервер: $ADDR
+  Порт:   $OVPN_PORT/udp
+  Подключение: панель → создать пользователя → скачать .ovpn →
+               импортировать в клиент OpenVPN
+
+TLS-сертификат: $tls
+
+Каталог установки: $INSTALL_DIR
+
+Управление (из каталога установки):
+  docker compose ps                          статус сервисов
+  docker compose logs -f ovpn-admin          логи панели
+  git pull && docker compose up -d --build    обновление
+
+Бэкап: $INSTALL_DIR/data/ — вся PKI и учёт трафика.
+       Без этого каталога выпущенные .ovpn восстановить нельзя.
+
+Документация: $INSTALL_DIR/docs/
+Сгенерировано: $(date '+%Y-%m-%d %H:%M %Z')
 EOF
-  (( DO_ACME )) || warn "Сейчас self-signed сертификат — браузер будет ругаться. Выпусти нормальный: см. README, раздел «TLS»."
+)"
+
+  printf '%s\n' "$text" | sed 's/^/    /'
+
+  # та же памятка файлом в домашний каталог пользователя (с паролем → chmod 600)
+  local owner="${SUDO_USER:-root}" home
+  home="$(getent passwd "$owner" | cut -d: -f6)"
+  [[ -d "$home" ]] || { owner=root; home=/root; }
+  local sprav="$home/ovpn-stack-справка.txt"
+  if printf '%s\n' "$text" > "$sprav" 2>/dev/null; then
+    chmod 600 "$sprav"
+    chown "$owner:" "$sprav" 2>/dev/null || true
+    ok "памятка с логином и паролем сохранена: $sprav"
+  else
+    warn "не удалось записать памятку в $sprav (логин/пароль см. в $INSTALL_DIR/.env)"
+  fi
+
+  (( DO_ACME )) || warn "Сейчас self-signed — нормальный сертификат: см. README, раздел «TLS»."
 }
 
 # ---------------------------------------------------------------------------
