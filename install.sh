@@ -504,17 +504,21 @@ setup_acme() {
   step "TLS-сертификат (Let's Encrypt через acme.sh)"
 
   # acme.sh ставится в $HOME/.acme.sh; под sudo $HOME может остаться домашним
-  # каталогом пользователя, поэтому фиксируем root и путь через --home.
+  # каталогом пользователя — фиксируем root.
   export HOME=/root
-  local acme_home="/root/.acme.sh" acme="/root/.acme.sh/acme.sh"
+  local acme="/root/.acme.sh/acme.sh"
   if [[ ! -x "$acme" ]]; then
     info "ставлю acme.sh…"
-    local em=(); [[ -n "$ACME_EMAIL" ]] && em=(--accountemail "$ACME_EMAIL")
-    if ! curl -fsSL https://get.acme.sh | sh -s -- --home "$acme_home" "${em[@]}" >/tmp/acme-install.log 2>&1; then
+    # get.acme.sh ждёт e-mail первым аргументом в виде "email=addr"
+    # (любой --флаг первым аргументом он превращает в "----флаг" и падает).
+    # Свою ошибку установки get.acme.sh проглатывает и выходит с кодом 0,
+    # поэтому ниже отдельно проверяем, что бинарь реально появился.
+    local ga=(); [[ -n "$ACME_EMAIL" ]] && ga=("email=$ACME_EMAIL")
+    curl -fsSL https://get.acme.sh | sh -s -- "${ga[@]}" >/tmp/acme-install.log 2>&1 || true
+    if [[ ! -x "$acme" ]]; then
       sed 's/^/    /' /tmp/acme-install.log >&2 || true
       die "не смог поставить acme.sh (лог: /tmp/acme-install.log)"
     fi
-    [[ -x "$acme" ]] || die "acme.sh не появился в $acme (лог: /tmp/acme-install.log)"
   fi
   ok "acme.sh $("$acme" --version 2>/dev/null | tail -1)"
 
