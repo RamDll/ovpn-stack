@@ -596,7 +596,7 @@ func checkUserExist(username string) bool {
 }
 
 func (oAdmin *OvpnAdmin) usersList() []OpenvpnClient {
-	var users []OpenvpnClient
+	users := []OpenvpnClient{}
 
 	totalCerts := 0
 	validCerts := 0
@@ -676,7 +676,7 @@ func (oAdmin *OvpnAdmin) userCreate(username string, certExpireDays int) (bool, 
 }
 
 func (oAdmin *OvpnAdmin) getUserStatistic(username string) []clientStatus {
-	var userStatistic []clientStatus
+	userStatistic := []clientStatus{}
 	for _, u := range oAdmin.activeClients {
 		if u.CommonName == username {
 			userStatistic = append(userStatistic, u)
