@@ -534,13 +534,22 @@ setup_acme() {
     info "IP-сертификат: профиль 'shortlived' (~6 дней, авто-renew через крон acme.sh)"
   fi
 
-  if "$acme" "${issue_args[@]}" >/tmp/acme-issue.log 2>&1; then
-    ok "сертификат выпущен и подставлен, nginx перезагружен"
-    "$acme" --upgrade --auto-upgrade >/dev/null 2>&1 || true
-  else
-    warn "acme.sh не смог выпустить сертификат — остаётся self-signed. Лог: /tmp/acme-issue.log"
-    warn "Частые причины: DNS не указывает сюда, порт 80 закрыт снаружи, для IP — лимиты Let's Encrypt."
-  fi
+  local rc=0
+  "$acme" "${issue_args[@]}" >/tmp/acme-issue.log 2>&1 || rc=$?
+  case "$rc" in
+    0)
+      ok "сертификат выпущен и подставлен, nginx перезагружен"
+      "$acme" --upgrade --auto-upgrade >/dev/null 2>&1 || true
+      ;;
+    2)
+      # acme.sh: домены не изменились, действующий сертификат ещё живой
+      ok "сертификат уже выпущен и действует — продлится по крону acme.sh"
+      ;;
+    *)
+      warn "acme.sh не смог выпустить сертификат — остаётся текущий (self-signed). Лог: /tmp/acme-issue.log"
+      warn "Частые причины: DNS не указывает сюда, порт 80 закрыт снаружи, для IP — лимиты Let's Encrypt."
+      ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
