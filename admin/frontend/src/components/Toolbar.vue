@@ -3,7 +3,6 @@ import { useI18n } from 'vue-i18n'
 
 defineProps<{
   search: string
-  canCreate: boolean
   filterOnline: boolean
   filterRevoked: boolean
   revokedCount: number
@@ -57,7 +56,7 @@ const { t } = useI18n()
 
     <button class="btn btn-ghost" type="button" @click="emit('refresh')">{{ t('common.refresh') }}</button>
 
-    <button v-if="canCreate" class="btn btn-primary" type="button" @click="emit('add')">
+    <button class="btn btn-primary" type="button" @click="emit('add')">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true">
         <path d="M12 5v14M5 12h14" />
       </svg>

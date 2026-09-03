@@ -1,6 +1,5 @@
 export type AccountStatus = 'Active' | 'Revoked' | 'Expired'
 export type ConnectionStatus = 'Connected' | 'Disconnected' | ''
-export type ServerRole = 'master' | 'slave'
 export type OvpnModule = 'core' | 'ccd' | (string & {})
 
 /** Строка ответа `api/users/list`. */
@@ -17,7 +16,6 @@ export interface OpenvpnClient {
 
 /** Ответ `api/server/settings`. */
 export interface ServerSettings {
-  serverRole: ServerRole
   modules: OvpnModule[]
   caExpireDays: number
   serverCertExpireDays: number

@@ -7,7 +7,7 @@ import { useUserActions } from '@/composables/useUserActions'
 import { ApiError } from '@/api/client'
 import type { Ccd, CcdRoute } from '@/api/types'
 
-const props = defineProps<{ open: boolean; username: string; readonly: boolean }>()
+const props = defineProps<{ open: boolean; username: string }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const { t } = useI18n()
@@ -72,7 +72,7 @@ async function save() {
 <template>
   <ModalShell
     :open="open"
-    :title="readonly ? t('ccd.titleReadonly') : t('ccd.title')"
+    :title="t('ccd.title')"
     :description="username"
     wide
     @update:open="emit('update:open', $event)"
@@ -82,9 +82,8 @@ async function save() {
       <div class="field">
         <label>{{ t('ccd.staticAddress') }}</label>
         <div class="addr-row">
-          <input v-model="ccd.ClientAddress" class="input" type="text" placeholder="dynamic" :readonly="readonly" />
+          <input v-model="ccd.ClientAddress" class="input" type="text" placeholder="dynamic" />
           <button
-            v-if="!readonly"
             class="btn btn-ghost"
             type="button"
             :disabled="isDynamic"
@@ -102,28 +101,25 @@ async function save() {
               <th>{{ t('ccd.address') }}</th>
               <th>{{ t('ccd.mask') }}</th>
               <th>{{ t('ccd.description') }}</th>
-              <th v-if="!readonly" />
+              <th />
             </tr>
           </thead>
           <tbody>
             <tr v-for="(r, i) in ccd.CustomRoutes" :key="i">
-              <td><input v-model="r.Address" class="input sm" :readonly="readonly" /></td>
-              <td><input v-model="r.Mask" class="input sm" :readonly="readonly" /></td>
-              <td><input v-model="r.Description" class="input sm" :readonly="readonly" /></td>
-              <td v-if="!readonly" class="del">
+              <td><input v-model="r.Address" class="input sm" /></td>
+              <td><input v-model="r.Mask" class="input sm" /></td>
+              <td><input v-model="r.Description" class="input sm" /></td>
+              <td class="del">
                 <button class="btn btn-ghost sm" type="button" :aria-label="t('ccd.removeRoute')" @click="removeRoute(i)">✕</button>
               </td>
             </tr>
-            <tr v-if="!readonly" class="draft">
+            <tr class="draft">
               <td><input v-model="draft.Address" class="input sm" placeholder="10.0.0.0" /></td>
               <td><input v-model="draft.Mask" class="input sm" placeholder="255.255.255.0" /></td>
               <td><input v-model="draft.Description" class="input sm" :placeholder="t('ccd.descPlaceholder')" /></td>
               <td class="del">
                 <button class="btn btn-primary sm" type="button" :aria-label="t('ccd.addRoute')" @click="addRoute">+</button>
               </td>
-            </tr>
-            <tr v-if="readonly && ccd.CustomRoutes.length === 0">
-              <td colspan="3" class="muted">{{ t('ccd.noRoutes') }}</td>
             </tr>
           </tbody>
         </table>
@@ -134,9 +130,9 @@ async function save() {
 
     <template #footer>
       <button class="btn btn-ghost" type="button" :disabled="busy" @click="emit('update:open', false)">
-        {{ readonly ? t('common.close') : t('common.cancel') }}
+        {{ t('common.cancel') }}
       </button>
-      <button v-if="!readonly" class="btn btn-primary" type="button" :disabled="busy || loading" @click="save">
+      <button class="btn btn-primary" type="button" :disabled="busy || loading" @click="save">
         {{ busy ? t('common.saving') : t('common.save') }}
       </button>
     </template>

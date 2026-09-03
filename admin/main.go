@@ -37,25 +37,15 @@ var staticFiles embed.FS
 var templateFiles embed.FS
 
 const (
-	usernameRegexp       = `^([a-zA-Z0-9_.\-@])+$`
-	certsArchiveFileName = "certs.tar.gz"
-	ccdArchiveFileName   = "ccd.tar.gz"
-	indexTxtDateLayout   = "060102150405Z"
-	stringDateFormat     = "2006-01-02 15:04:05"
-	downloadCertsApiUrl  = "api/data/certs/download"
-	downloadCcdApiUrl    = "api/data/ccd/download"
+	usernameRegexp     = `^([a-zA-Z0-9_.\-@])+$`
+	indexTxtDateLayout = "060102150405Z"
+	stringDateFormat   = "2006-01-02 15:04:05"
 )
 
 var (
 	listenHost               = kingpin.Flag("listen.host", "host for ovpn-admin").Default("0.0.0.0").Envar("OVPN_LISTEN_HOST").String()
 	listenPort               = kingpin.Flag("listen.port", "port for ovpn-admin").Default("8080").Envar("OVPN_LISTEN_PORT").String()
 	listenBaseUrl            = kingpin.Flag("listen.base-url", "base url for ovpn-admin").Default("/").Envar("OVPN_LISTEN_BASE_URL").String()
-	serverRole               = kingpin.Flag("role", "server role, master or slave").Default("master").Envar("OVPN_ROLE").HintOptions("master", "slave").String()
-	masterHost               = kingpin.Flag("master.host", "URL for the master server").Default("http://127.0.0.1").Envar("OVPN_MASTER_HOST").String()
-	masterBasicAuthUser      = kingpin.Flag("master.basic-auth.user", "user for master server's Basic Auth").Default("").Envar("OVPN_MASTER_USER").String()
-	masterBasicAuthPassword  = kingpin.Flag("master.basic-auth.password", "password for master server's Basic Auth").Default("").Envar("OVPN_MASTER_PASSWORD").String()
-	masterSyncFrequency      = kingpin.Flag("master.sync-frequency", "master host data sync frequency in seconds").Default("600").Envar("OVPN_MASTER_SYNC_FREQUENCY").Int()
-	masterSyncToken          = kingpin.Flag("master.sync-token", "master host data sync security token").Default("VerySecureToken").Envar("OVPN_MASTER_TOKEN").PlaceHolder("TOKEN").String()
 	openvpnNetwork           = kingpin.Flag("ovpn.network", "NETWORK/MASK_PREFIX for OpenVPN server").Default("172.16.100.0/24").Envar("OVPN_NETWORK").String()
 	openvpnServer            = kingpin.Flag("ovpn.server", "HOST:PORT:PROTOCOL for OpenVPN server; can have multiple values").Default("127.0.0.1:7777:tcp").Envar("OVPN_SERVER").PlaceHolder("HOST:PORT:PROTOCOL").Strings()
 	mgmtAddress              = kingpin.Flag("mgmt", "ALIAS=HOST:PORT for OpenVPN server mgmt interface; can have multiple values").Default("main=127.0.0.1:8989").Envar("OVPN_MGMT").Strings()
@@ -70,9 +60,6 @@ var (
 	logLevel                 = kingpin.Flag("log.level", "set log level: trace, debug, info, warn, error (default info)").Default("info").Envar("LOG_LEVEL").String()
 	logFormat                = kingpin.Flag("log.format", "set log format: text, json (default text)").Default("text").Envar("LOG_FORMAT").String()
 	statDbPath               = kingpin.Flag("statistic.db", "path to the monthly traffic statistic database (empty to disable persistence)").Default("./data/traffic.db").Envar("OVPN_STAT_DB").String()
-
-	certsArchivePath = "/tmp/" + certsArchiveFileName
-	ccdArchivePath   = "/tmp/" + ccdArchiveFileName
 
 	version = "2.0.0"
 )
@@ -170,19 +157,14 @@ var (
 )
 
 type OvpnAdmin struct {
-	role                   string
-	lastSyncTime           string
-	lastSuccessfulSyncTime string
-	masterHostBasicAuth    bool
-	masterSyncToken        string
-	clients                []OpenvpnClient
-	activeClients          []clientStatus
-	promRegistry           *prometheus.Registry
-	mgmtInterfaces         map[string]string
-	modules                []string
-	mgmtStatusTimeFormat   string
-	createUserMutex        *sync.Mutex
-	stat                   *statStore
+	clients              []OpenvpnClient
+	activeClients        []clientStatus
+	promRegistry         *prometheus.Registry
+	mgmtInterfaces       map[string]string
+	modules              []string
+	mgmtStatusTimeFormat string
+	createUserMutex      *sync.Mutex
+	stat                 *statStore
 }
 
 type OpenvpnServer struct {
@@ -260,10 +242,6 @@ func (oAdmin *OvpnAdmin) userStatisticHandler(w http.ResponseWriter, r *http.Req
 
 func (oAdmin *OvpnAdmin) userCreateHandler(w http.ResponseWriter, r *http.Request) {
 	log.Info(r.RemoteAddr, " ", r.RequestURI)
-	if oAdmin.role == "slave" {
-		http.Error(w, `{"status":"error"}`, http.StatusLocked)
-		return
-	}
 	_ = r.ParseForm()
 	expireDays, _ := strconv.Atoi(r.FormValue("expire"))
 	userCreated, userCreateStatus := oAdmin.userCreate(r.FormValue("username"), expireDays)
@@ -279,10 +257,6 @@ func (oAdmin *OvpnAdmin) userCreateHandler(w http.ResponseWriter, r *http.Reques
 }
 func (oAdmin *OvpnAdmin) userRotateHandler(w http.ResponseWriter, r *http.Request) {
 	log.Info(r.RemoteAddr, " ", r.RequestURI)
-	if oAdmin.role == "slave" {
-		http.Error(w, `{"status":"error"}`, http.StatusLocked)
-		return
-	}
 	_ = r.ParseForm()
 	expireDays, _ := strconv.Atoi(r.FormValue("expire"))
 	err, msg := oAdmin.userRotate(r.FormValue("username"), expireDays)
@@ -296,10 +270,6 @@ func (oAdmin *OvpnAdmin) userRotateHandler(w http.ResponseWriter, r *http.Reques
 
 func (oAdmin *OvpnAdmin) userDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	log.Info(r.RemoteAddr, " ", r.RequestURI)
-	if oAdmin.role == "slave" {
-		http.Error(w, `{"status":"error"}`, http.StatusLocked)
-		return
-	}
 	_ = r.ParseForm()
 	err, msg := oAdmin.userDelete(r.FormValue("username"))
 	if err != nil {
@@ -312,10 +282,6 @@ func (oAdmin *OvpnAdmin) userDeleteHandler(w http.ResponseWriter, r *http.Reques
 
 func (oAdmin *OvpnAdmin) userRevokeHandler(w http.ResponseWriter, r *http.Request) {
 	log.Info(r.RemoteAddr, " ", r.RequestURI)
-	if oAdmin.role == "slave" {
-		http.Error(w, `{"status":"error"}`, http.StatusLocked)
-		return
-	}
 	_ = r.ParseForm()
 	err, msg := oAdmin.userRevoke(r.FormValue("username"))
 	if err != nil {
@@ -328,10 +294,6 @@ func (oAdmin *OvpnAdmin) userRevokeHandler(w http.ResponseWriter, r *http.Reques
 
 func (oAdmin *OvpnAdmin) userUnrevokeHandler(w http.ResponseWriter, r *http.Request) {
 	log.Info(r.RemoteAddr, " ", r.RequestURI)
-	if oAdmin.role == "slave" {
-		http.Error(w, `{"status":"error"}`, http.StatusLocked)
-		return
-	}
 	_ = r.ParseForm()
 	err, msg := oAdmin.userUnrevoke(r.FormValue("username"))
 	if err != nil {
@@ -364,10 +326,6 @@ func (oAdmin *OvpnAdmin) userShowCcdHandler(w http.ResponseWriter, r *http.Reque
 
 func (oAdmin *OvpnAdmin) userApplyCcdHandler(w http.ResponseWriter, r *http.Request) {
 	log.Info(r.RemoteAddr, " ", r.RequestURI)
-	if oAdmin.role == "slave" {
-		http.Error(w, `{"status":"error"}`, http.StatusLocked)
-		return
-	}
 	var ccd Ccd
 	if r.Body == nil {
 		http.Error(w, "Please send a request body", http.StatusBadRequest)
@@ -399,56 +357,8 @@ func (oAdmin *OvpnAdmin) serverSettingsHandler(w http.ResponseWriter, r *http.Re
 	caDays := int(time.Until(getOvpnCaCertExpireDate()).Hours() / 24)
 	certDays := int(time.Until(getOvpnServerCertExpireDate()).Hours() / 24)
 	fmt.Fprintf(w,
-		`{"status":"ok", "serverRole": "%s", "modules": %s, "caExpireDays": %d, "serverCertExpireDays": %d }`,
-		oAdmin.role, string(enabledModules), caDays, certDays)
-}
-
-func (oAdmin *OvpnAdmin) lastSyncTimeHandler(w http.ResponseWriter, r *http.Request) {
-	log.Debug(r.RemoteAddr, " ", r.RequestURI)
-	fmt.Fprint(w, oAdmin.lastSyncTime)
-}
-
-func (oAdmin *OvpnAdmin) lastSuccessfulSyncTimeHandler(w http.ResponseWriter, r *http.Request) {
-	log.Debug(r.RemoteAddr, " ", r.RequestURI)
-	fmt.Fprint(w, oAdmin.lastSuccessfulSyncTime)
-}
-
-func (oAdmin *OvpnAdmin) downloadCertsHandler(w http.ResponseWriter, r *http.Request) {
-	log.Info(r.RemoteAddr, " ", r.RequestURI)
-	if oAdmin.role == "slave" {
-		http.Error(w, `{"status":"error"}`, http.StatusBadRequest)
-		return
-	}
-	_ = r.ParseForm()
-	token := r.Form.Get("token")
-
-	if token != oAdmin.masterSyncToken {
-		http.Error(w, `{"status":"error"}`, http.StatusForbidden)
-		return
-	}
-
-	archiveCerts()
-	w.Header().Set("Content-Disposition", "attachment; filename="+certsArchiveFileName)
-	http.ServeFile(w, r, certsArchivePath)
-}
-
-func (oAdmin *OvpnAdmin) downloadCcdHandler(w http.ResponseWriter, r *http.Request) {
-	log.Info(r.RemoteAddr, " ", r.RequestURI)
-	if oAdmin.role == "slave" {
-		http.Error(w, `{"status":"error"}`, http.StatusBadRequest)
-		return
-	}
-	_ = r.ParseForm()
-	token := r.Form.Get("token")
-
-	if token != oAdmin.masterSyncToken {
-		http.Error(w, `{"status":"error"}`, http.StatusForbidden)
-		return
-	}
-
-	archiveCcd()
-	w.Header().Set("Content-Disposition", "attachment; filename="+ccdArchiveFileName)
-	http.ServeFile(w, r, ccdArchivePath)
+		`{"status":"ok", "modules": %s, "caExpireDays": %d, "serverCertExpireDays": %d }`,
+		string(enabledModules), caDays, certDays)
 }
 
 func main() {
@@ -464,10 +374,6 @@ func main() {
 
 	ovpnAdmin := new(OvpnAdmin)
 
-	ovpnAdmin.lastSyncTime = "unknown"
-	ovpnAdmin.role = *serverRole
-	ovpnAdmin.lastSuccessfulSyncTime = "unknown"
-	ovpnAdmin.masterSyncToken = *masterSyncToken
 	ovpnAdmin.promRegistry = prometheus.NewRegistry()
 	ovpnAdmin.modules = []string{}
 	ovpnAdmin.createUserMutex = &sync.Mutex{}
@@ -487,21 +393,10 @@ func main() {
 
 	go ovpnAdmin.updateState()
 
-	if *masterBasicAuthPassword != "" && *masterBasicAuthUser != "" {
-		ovpnAdmin.masterHostBasicAuth = true
-	} else {
-		ovpnAdmin.masterHostBasicAuth = false
-	}
-
 	ovpnAdmin.modules = append(ovpnAdmin.modules, "core")
 
 	if *ccdEnabled {
 		ovpnAdmin.modules = append(ovpnAdmin.modules, "ccd")
-	}
-
-	if ovpnAdmin.role == "slave" {
-		ovpnAdmin.syncDataFromMaster()
-		go ovpnAdmin.syncWithMaster()
 	}
 
 	staticFS, _ := fs.Sub(staticFiles, "frontend/static")
@@ -522,11 +417,6 @@ func main() {
 	http.HandleFunc(*listenBaseUrl+"api/statistic", ovpnAdmin.statisticHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/ccd", ovpnAdmin.userShowCcdHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/ccd/apply", ovpnAdmin.userApplyCcdHandler)
-
-	http.HandleFunc(*listenBaseUrl+"api/sync/last/try", ovpnAdmin.lastSyncTimeHandler)
-	http.HandleFunc(*listenBaseUrl+"api/sync/last/successful", ovpnAdmin.lastSuccessfulSyncTimeHandler)
-	http.HandleFunc(*listenBaseUrl+downloadCertsApiUrl, ovpnAdmin.downloadCertsHandler)
-	http.HandleFunc(*listenBaseUrl+downloadCcdApiUrl, ovpnAdmin.downloadCcdHandler)
 
 	http.Handle(*metricsPath, promhttp.HandlerFor(ovpnAdmin.promRegistry, promhttp.HandlerOpts{}))
 	http.HandleFunc(*listenBaseUrl+"ping", func(w http.ResponseWriter, r *http.Request) {
@@ -1271,120 +1161,6 @@ func isUserConnected(username string, connectedUsers []clientStatus) (bool, []st
 		}
 	}
 	return connected, connections
-}
-
-func (oAdmin *OvpnAdmin) downloadCerts() bool {
-	if fExist(certsArchivePath) {
-		err := fDelete(certsArchivePath)
-		if err != nil {
-			log.Error(err)
-		}
-	}
-
-	err := fDownload(certsArchivePath, *masterHost+*listenBaseUrl+downloadCertsApiUrl+"?token="+oAdmin.masterSyncToken, oAdmin.masterHostBasicAuth)
-	if err != nil {
-		log.Error(err)
-		return false
-	}
-
-	return true
-}
-
-func (oAdmin *OvpnAdmin) downloadCcd() bool {
-	if fExist(ccdArchivePath) {
-		err := fDelete(ccdArchivePath)
-		if err != nil {
-			log.Error(err)
-		}
-	}
-
-	err := fDownload(ccdArchivePath, *masterHost+*listenBaseUrl+downloadCcdApiUrl+"?token="+oAdmin.masterSyncToken, oAdmin.masterHostBasicAuth)
-	if err != nil {
-		log.Error(err)
-		return false
-	}
-
-	return true
-}
-
-func archiveCerts() {
-	err := createArchiveFromDir(*easyrsaDirPath+"/pki", certsArchivePath)
-	if err != nil {
-		log.Warnf("archiveCerts(): %s", err)
-	}
-}
-
-func archiveCcd() {
-	err := createArchiveFromDir(*ccdDir, ccdArchivePath)
-	if err != nil {
-		log.Warnf("archiveCcd(): %s", err)
-	}
-}
-
-func unArchiveCerts() {
-	if err := os.MkdirAll(*easyrsaDirPath+"/pki", 0755); err != nil {
-		log.Warnf("unArchiveCerts(): error creating pki dir: %s", err)
-	}
-
-	err := extractFromArchive(certsArchivePath, *easyrsaDirPath+"/pki")
-	if err != nil {
-		log.Warnf("unArchiveCerts: extractFromArchive() %s", err)
-	}
-}
-
-func unArchiveCcd() {
-	if err := os.MkdirAll(*ccdDir, 0755); err != nil {
-		log.Warnf("unArchiveCcd(): error creating ccd dir: %s", err)
-	}
-
-	err := extractFromArchive(ccdArchivePath, *ccdDir)
-	if err != nil {
-		log.Warnf("unArchiveCcd: extractFromArchive() %s", err)
-	}
-}
-
-func (oAdmin *OvpnAdmin) syncDataFromMaster() {
-	retryCountMax := 3
-	certsDownloadFailed := true
-	ccdDownloadFailed := true
-
-	for certsDownloadRetries := 0; certsDownloadRetries < retryCountMax; certsDownloadRetries++ {
-		log.Infof("Downloading archive with certificates from master. Attempt %d", certsDownloadRetries)
-		if oAdmin.downloadCerts() {
-			certsDownloadFailed = false
-			log.Info("Decompressing archive with certificates from master")
-			unArchiveCerts()
-			log.Info("Decompression archive with certificates from master completed")
-			break
-		} else {
-			log.Warnf("Something goes wrong during downloading archive with certificates from master. Attempt %d", certsDownloadRetries)
-		}
-	}
-
-	for ccdDownloadRetries := 0; ccdDownloadRetries < retryCountMax; ccdDownloadRetries++ {
-		log.Infof("Downloading archive with ccd from master. Attempt %d", ccdDownloadRetries)
-		if oAdmin.downloadCcd() {
-			ccdDownloadFailed = false
-			log.Info("Decompressing archive with ccd from master")
-			unArchiveCcd()
-			log.Info("Decompression archive with ccd from master completed")
-			break
-		} else {
-			log.Warnf("Something goes wrong during downloading archive with ccd from master. Attempt %d", ccdDownloadRetries)
-		}
-	}
-
-	oAdmin.lastSyncTime = time.Now().Format(stringDateFormat)
-	if !ccdDownloadFailed && !certsDownloadFailed {
-		oAdmin.lastSuccessfulSyncTime = time.Now().Format(stringDateFormat)
-	}
-}
-
-func (oAdmin *OvpnAdmin) syncWithMaster() {
-	for {
-		time.Sleep(time.Duration(*masterSyncFrequency) * time.Second)
-		oAdmin.syncDataFromMaster()
-	}
 }
 
 func getOvpnCaCertExpireDate() time.Time {

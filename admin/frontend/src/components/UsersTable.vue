@@ -12,7 +12,7 @@ import StatusPill from './StatusPill.vue'
 import { formatBytes, fmtAgo, fmtDuration } from '@/utils/format'
 import type { Session } from '@/composables/useTraffic'
 import type { SortKey, SortDir } from '@/composables/useUsers'
-import type { OpenvpnClient, OvpnModule, ServerRole } from '@/api/types'
+import type { OpenvpnClient, OvpnModule } from '@/api/types'
 
 export type RowAction =
   | 'revoke'
@@ -26,7 +26,6 @@ export type RowAction =
 const props = defineProps<{
   rows: OpenvpnClient[]
   loading: boolean
-  role: ServerRole
   modules: OvpnModule[]
   traffic: Record<string, Session>
   sortKey: SortKey
@@ -69,22 +68,19 @@ interface ActionDef {
   key: string
   tone?: 'warn' | 'crit'
   when: (r: OpenvpnClient) => boolean
-  roles: ServerRole[]
   module: OvpnModule
 }
 const ACTIONS: ActionDef[] = [
-  { action: 'download-config', key: 'actions.config', when: (r) => r.AccountStatus === 'Active', roles: ['master', 'slave'], module: 'core' },
-  { action: 'edit-ccd', key: 'actions.routes', when: (r) => r.AccountStatus === 'Active', roles: ['master', 'slave'], module: 'ccd' },
-  { action: 'disconnect', key: 'actions.disconnect', tone: 'warn', when: (r) => r.ConnectionStatus === 'Connected', roles: ['master'], module: 'core' },
-  { action: 'revoke', key: 'actions.revoke', tone: 'warn', when: (r) => r.AccountStatus === 'Active', roles: ['master'], module: 'core' },
-  { action: 'unrevoke', key: 'actions.unrevoke', when: (r) => r.AccountStatus === 'Revoked', roles: ['master'], module: 'core' },
-  { action: 'rotate', key: 'actions.rotate', tone: 'warn', when: (r) => r.AccountStatus !== 'Active', roles: ['master'], module: 'core' },
-  { action: 'delete', key: 'actions.delete', tone: 'crit', when: (r) => r.AccountStatus !== 'Active', roles: ['master'], module: 'core' },
+  { action: 'download-config', key: 'actions.config', when: (r) => r.AccountStatus === 'Active', module: 'core' },
+  { action: 'edit-ccd', key: 'actions.routes', when: (r) => r.AccountStatus === 'Active', module: 'ccd' },
+  { action: 'disconnect', key: 'actions.disconnect', tone: 'warn', when: (r) => r.ConnectionStatus === 'Connected', module: 'core' },
+  { action: 'revoke', key: 'actions.revoke', tone: 'warn', when: (r) => r.AccountStatus === 'Active', module: 'core' },
+  { action: 'unrevoke', key: 'actions.unrevoke', when: (r) => r.AccountStatus === 'Revoked', module: 'core' },
+  { action: 'rotate', key: 'actions.rotate', tone: 'warn', when: (r) => r.AccountStatus !== 'Active', module: 'core' },
+  { action: 'delete', key: 'actions.delete', tone: 'crit', when: (r) => r.AccountStatus !== 'Active', module: 'core' },
 ]
 function actionsFor(row: OpenvpnClient): ActionDef[] {
-  return ACTIONS.filter(
-    (a) => a.when(row) && a.roles.includes(props.role) && props.modules.includes(a.module),
-  )
+  return ACTIONS.filter((a) => a.when(row) && props.modules.includes(a.module))
 }
 
 function subline(row: OpenvpnClient): string {
