@@ -6,9 +6,18 @@ TLS-сертификата поднимается одной командой `d
 ## Быстрая установка на свежий сервер
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/RamDll/ovpn-stack/master/install.sh -o install.sh
+# wget входит в базовую установку Debian (priority: standard), curl — нет:
+wget -qO install.sh https://raw.githubusercontent.com/RamDll/ovpn-stack/master/install.sh
+# либо, если curl уже установлен:
+# curl -fsSL https://raw.githubusercontent.com/RamDll/ovpn-stack/master/install.sh -o install.sh
+
 sudo bash install.sh
 ```
+
+Внутри скрипта `curl` не требуется до шага установки зависимостей — он ставится
+там вместе с Docker. Единственное, что работает раньше и зависит от `curl`, —
+автоопределение публичного IP; без `curl` этот шаг тихо пропускается, и IP
+нужно ввести вручную (или передать флагом `--ip`).
 
 Скрипт `install.sh` (Debian/Ubuntu) в интерактиве спрашивает и делает:
 
