@@ -60,3 +60,57 @@ jobs:
       - name: Погасить стек
         if: always()
         run: docker compose down -v
+
+  install-script:
+    name: install.sh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: shellcheck
+        run: |
+          docker run --rm -v "$PWD":/mnt -w /mnt koalaman/shellcheck:stable \
+            install.sh scripts/backup.sh
+
+      - name: end-to-end в чистом debian:13 (Docker-in-Docker)
+        run: |
+          set -e
+          docker run -d --name box --privileged -v "$PWD":/src:ro debian:13 sleep 1200
+          docker exec -e GH_REF box bash -euo pipefail -c '
+            apt-get update -q >/dev/null
+            apt-get install -y -q curl ca-certificates iproute2 git >/dev/null
+            curl -fsSL https://get.docker.com | sh >/dev/null 2>&1
+            dockerd --storage-driver=vfs >/var/log/dockerd.log 2>&1 &
+            for i in $(seq 40); do docker info >/dev/null 2>&1 && break; sleep 1; done
+
+            cp /src/install.sh /root/install.sh
+            bash /root/install.sh --yes --self-signed --no-fail2ban --no-firewall \
+              --ip 203.0.113.10 --password ci-Test-1234 --dir /opt/ovpn-stack \
+              --branch "${GH_REF}"
+
+            cd /opt/ovpn-stack
+            docker compose ps
+            set -a; . ./.env; set +a
+            A="-sk -u $BASIC_AUTH_USER:$BASIC_AUTH_PASSWORD"
+            test "$(curl $A -o /dev/null -w %{http_code} https://localhost/)" = 200
+            test "$(curl $A https://localhost/api/users/list)" = "[]"
+            test "$(curl -s -o /dev/null -w %{http_code} http://localhost/healthz)" = 200
+
+            # backup → wipe → restore (scripts/backup.sh уже в клоне)
+            curl $A -X POST -d username=keeper https://localhost/api/user/create >/dev/null
+            bash scripts/backup.sh --out /root/bak >/dev/null
+            rm -rf data .env && docker compose down >/dev/null 2>&1
+            bash scripts/backup.sh --restore /root/bak/*.tar.gz --yes >/dev/null
+            test "$(curl $A https://localhost/api/users/list | grep -o keeper)" = keeper
+            echo "OK: install.sh + backup/restore"
+          '
+        env:
+          GH_REF: ${{ github.head_ref || github.ref_name }}
+
+      - name: Логи при падении
+        if: failure()
+        run: docker exec box cat /var/log/dockerd.log 2>/dev/null || true
+
+      - name: Убрать контейнер
+        if: always()
+        run: docker rm -f box || true
