@@ -51,9 +51,11 @@ jobs:
           test "$(curl -sk -o /dev/null -w '%{http_code}' \
                   -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASSWORD" https://localhost/)" = 200
 
-          # панель отдаёт список клиентов (JSON-массив)
+          # бэкенд панели отвечает: настройки сервера + список клиентов (пустой массив на свежем PKI)
           docker compose exec -T ovpn-admin \
-            wget -qO- http://127.0.0.1:8080/api/users/list | grep -q '^\['
+            wget -qO- http://127.0.0.1:8080/api/server/settings | grep -q '"status":"ok"'
+          test "$(docker compose exec -T ovpn-admin \
+            wget -qO- http://127.0.0.1:8080/api/users/list)" = '[]'
 
           echo "OK: стек поднялся и отвечает"
 
