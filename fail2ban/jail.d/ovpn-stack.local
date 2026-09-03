@@ -1,7 +1,7 @@
 # fail2ban для ovpn-stack. Скопировать на хост в /etc/fail2ban/jail.d/, затем:
 #   fail2ban-client reload
 #
-# ВАЖНО: logpath ниже указан для развёртывания в /root/ovpn-stack.
+# ВАЖНО: logpath ниже указан для развёртывания в /home/deploy/ovpn-stack.
 # Поправьте под свой каталог, если он другой.
 #
 # Отказы Basic Auth (панель + Grafana) ловятся штатным фильтром nginx-http-auth
@@ -16,7 +16,7 @@
 [nginx-http-auth]
 enabled   = true
 port      = http,https
-logpath   = /root/ovpn-stack/nginx/f2b-log/error.log
+logpath   = /home/deploy/ovpn-stack/nginx/f2b-log/error.log
 banaction = docker-user
 maxretry  = 5
 findtime  = 10m
