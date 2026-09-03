@@ -12,11 +12,6 @@ updates:
       go-minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
-    ignore:
-      # k8s-режим ovpn-admin в docker-compose-развёртывании не используется,
-      # а каждый бамп client-go/apimachinery форсит скачок версии Go в go.mod.
-      # Обновлять осознанно и вручную вместе с базовым образом golang.
-      - dependency-name: "k8s.io/*"
 
   # Фронтенд-панель (admin/frontend/package.json)
   - package-ecosystem: "npm"
@@ -28,10 +23,9 @@ updates:
       npm-all:
         patterns: ["*"]
 
-  # Базовые образы Dockerfile'ов + образы сервисов в docker-compose.yaml
+  # Базовые образы Dockerfile'ов (docker-compose.yaml собирает всё локально)
   - package-ecosystem: "docker"
     directories:
-      - "/"          # docker-compose.yaml (prometheus, grafana, node-exporter)
       - "/admin"     # Dockerfile.openvpn, Dockerfile.ovpn-admin
       - "/nginx"     # Dockerfile
     schedule:
