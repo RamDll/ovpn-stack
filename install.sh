@@ -365,9 +365,10 @@ gen_selfsigned() {
 
 compose_up() {
   step "Сборка и запуск стека (первый раз — несколько минут)"
-  # --progress=plain: без него BuildKit пытается захватить консоль и падает
-  # с "failed to get console: provided file is not a console" при не-TTY выводе.
-  docker compose build --progress=plain
+  # --progress plain (глобальный флаг compose): без него BuildKit пытается
+  # захватить консоль и падает с "failed to get console: provided file is
+  # not a console" при не-TTY выводе.
+  docker compose --progress plain build
   docker compose up -d --wait --wait-timeout 300
   ok "все сервисы healthy"
   docker compose ps --format 'table {{.Service}}\t{{.Status}}' | sed 's/^/    /'
@@ -502,12 +503,18 @@ setup_acme() {
   fi
   step "TLS-сертификат (Let's Encrypt через acme.sh)"
 
-  local acme="/root/.acme.sh/acme.sh"
+  # acme.sh ставится в $HOME/.acme.sh; под sudo $HOME может остаться домашним
+  # каталогом пользователя, поэтому фиксируем root и путь через --home.
+  export HOME=/root
+  local acme_home="/root/.acme.sh" acme="/root/.acme.sh/acme.sh"
   if [[ ! -x "$acme" ]]; then
     info "ставлю acme.sh…"
     local em=(); [[ -n "$ACME_EMAIL" ]] && em=(--accountemail "$ACME_EMAIL")
-    curl -fsSL https://get.acme.sh | sh -s -- "${em[@]}" >/dev/null 2>&1 || die "не смог поставить acme.sh"
-    acme="/root/.acme.sh/acme.sh"
+    if ! curl -fsSL https://get.acme.sh | sh -s -- --home "$acme_home" "${em[@]}" >/tmp/acme-install.log 2>&1; then
+      sed 's/^/    /' /tmp/acme-install.log >&2 || true
+      die "не смог поставить acme.sh (лог: /tmp/acme-install.log)"
+    fi
+    [[ -x "$acme" ]] || die "acme.sh не появился в $acme (лог: /tmp/acme-install.log)"
   fi
   ok "acme.sh $("$acme" --version 2>/dev/null | tail -1)"
 
