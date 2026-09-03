@@ -33,5 +33,3 @@ remote-cert-tls server
 <tls-crypt>
 {{ .TLS -}}
 </tls-crypt>
-dhcp-option DNS 8.8.8.8
-dhcp-option DNS 8.8.4.4
