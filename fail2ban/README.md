@@ -14,7 +14,7 @@ nginx контейнеризован и пишет логи в stdout/stderr. Ч
 ```bash
 sudo cp fail2ban/action.d/docker-user.conf   /etc/fail2ban/action.d/
 sudo cp fail2ban/jail.d/ovpn-stack.local     /etc/fail2ban/jail.d/
-# поправьте logpath в ovpn-stack.local, если стек лежит не в /root/ovpn-stack
+# поправьте logpath в ovpn-stack.local, если стек лежит не в /home/deploy/ovpn-stack
 sudo systemctl restart fail2ban          # именно restart: reload не пересоздаёт banaction
 sudo fail2ban-client status nginx-http-auth
 ```
