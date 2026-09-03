@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"crypto/x509"
 	"embed"
 	"encoding/json"
@@ -24,9 +23,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -42,23 +38,14 @@ var staticFiles embed.FS
 var templateFiles embed.FS
 
 const (
-	usernameRegexp         = `^([a-zA-Z0-9_.\-@])+$`
-	passwordMinLength      = 6
-	certsArchiveFileName   = "certs.tar.gz"
-	ccdArchiveFileName     = "ccd.tar.gz"
-	indexTxtDateLayout     = "060102150405Z"
-	stringDateFormat       = "2006-01-02 15:04:05"
-	downloadCertsApiUrl    = "api/data/certs/download"
-	downloadCcdApiUrl      = "api/data/ccd/download"
-	labelKeyIndexTxt       = "index.txt"
-	labelKeyType           = "type"
-	labelKeyName           = "name"
-	labelKeyManagedBy      = "app.kubernetes.io/managed-by"
-	labelValueClientAuth   = "clientAuth"
-	labelValueManagedByApp = "ovpn-admin"
-	prefixStaticRoute      = "ifconfig-push"
-
-	kubeNamespaceFilePath = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+	usernameRegexp       = `^([a-zA-Z0-9_.\-@])+$`
+	passwordMinLength    = 6
+	certsArchiveFileName = "certs.tar.gz"
+	ccdArchiveFileName   = "ccd.tar.gz"
+	indexTxtDateLayout   = "060102150405Z"
+	stringDateFormat     = "2006-01-02 15:04:05"
+	downloadCertsApiUrl  = "api/data/certs/download"
+	downloadCcdApiUrl    = "api/data/ccd/download"
 )
 
 var (
@@ -73,8 +60,6 @@ var (
 	masterSyncToken          = kingpin.Flag("master.sync-token", "master host data sync security token").Default("VerySecureToken").Envar("OVPN_MASTER_TOKEN").PlaceHolder("TOKEN").String()
 	openvpnNetwork           = kingpin.Flag("ovpn.network", "NETWORK/MASK_PREFIX for OpenVPN server").Default("172.16.100.0/24").Envar("OVPN_NETWORK").String()
 	openvpnServer            = kingpin.Flag("ovpn.server", "HOST:PORT:PROTOCOL for OpenVPN server; can have multiple values").Default("127.0.0.1:7777:tcp").Envar("OVPN_SERVER").PlaceHolder("HOST:PORT:PROTOCOL").Strings()
-	openvpnServerBehindLB    = kingpin.Flag("ovpn.server.behindLB", "enable if your OpenVPN server is behind Kubernetes Service having the LoadBalancer type").Default("false").Envar("OVPN_LB").Bool()
-	openvpnServiceName       = kingpin.Flag("ovpn.service", "the name of Kubernetes Service having the LoadBalancer type if your OpenVPN server is behind it").Default("openvpn-external").Envar("OVPN_LB_SERVICE").Strings()
 	mgmtAddress              = kingpin.Flag("mgmt", "ALIAS=HOST:PORT for OpenVPN server mgmt interface; can have multiple values").Default("main=127.0.0.1:8989").Envar("OVPN_MGMT").Strings()
 	metricsPath              = kingpin.Flag("metrics.path", "URL path for exposing collected metrics").Default("/metrics").Envar("OVPN_METRICS_PATH").String()
 	easyrsaDirPath           = kingpin.Flag("easyrsa.path", "path to easyrsa dir").Default("./easyrsa").Envar("EASYRSA_PATH").String()
@@ -89,8 +74,6 @@ var (
 	authDataBaseInit         = kingpin.Flag("auth.db-init", "enable database initialization if db user not exists or size is 0").Default("false").Envar("OVPN_AUTH_DB_INIT").Bool()
 	logLevel                 = kingpin.Flag("log.level", "set log level: trace, debug, info, warn, error (default info)").Default("info").Envar("LOG_LEVEL").String()
 	logFormat                = kingpin.Flag("log.format", "set log format: text, json (default text)").Default("text").Envar("LOG_FORMAT").String()
-	storageBackend           = kingpin.Flag("storage.backend", "storage backend: filesystem, kubernetes.secrets (default filesystem)").Default("filesystem").Envar("STORAGE_BACKEND").String()
-	clientCertExpirationDays = kingpin.Flag("client-cert.expiration-days", "Expiration period of OpenVPN client certificates in days, the period will shrink automatically to the CA expiration period").Default("3650").Envar("CLIENT_CERT_EXPIRATION_DAYS").String()
 	statDbPath               = kingpin.Flag("statistic.db", "path to the monthly traffic statistic database (empty to disable persistence)").Default("./data/traffic.db").Envar("OVPN_STAT_DB").String()
 
 	certsArchivePath = "/tmp/" + certsArchiveFileName
@@ -269,14 +252,6 @@ type clientStatus struct {
 
 func (oAdmin *OvpnAdmin) userListHandler(w http.ResponseWriter, r *http.Request) {
 	log.Info(r.RemoteAddr, " ", r.RequestURI)
-
-	if *storageBackend == "kubernetes.secrets" {
-		err := app.updateIndexTxtOnDisk()
-		if err != nil {
-			log.Errorln(err)
-		}
-		oAdmin.clients = oAdmin.usersList()
-	}
 
 	usersList, _ := json.Marshal(oAdmin.clients)
 	fmt.Fprintf(w, "%s", usersList)
@@ -469,10 +444,6 @@ func (oAdmin *OvpnAdmin) downloadCertsHandler(w http.ResponseWriter, r *http.Req
 		http.Error(w, `{"status":"error"}`, http.StatusBadRequest)
 		return
 	}
-	if *storageBackend == "kubernetes.secrets" {
-		http.Error(w, `{"status":"error"}`, http.StatusBadRequest)
-		return
-	}
 	_ = r.ParseForm()
 	token := r.Form.Get("token")
 
@@ -492,10 +463,6 @@ func (oAdmin *OvpnAdmin) downloadCcdHandler(w http.ResponseWriter, r *http.Reque
 		http.Error(w, `{"status":"error"}`, http.StatusBadRequest)
 		return
 	}
-	if *storageBackend == "kubernetes.secrets" {
-		http.Error(w, `{"status":"error"}`, http.StatusBadRequest)
-		return
-	}
 	_ = r.ParseForm()
 	token := r.Form.Get("token")
 
@@ -509,21 +476,12 @@ func (oAdmin *OvpnAdmin) downloadCcdHandler(w http.ResponseWriter, r *http.Reque
 	http.ServeFile(w, r, ccdArchivePath)
 }
 
-var app OpenVPNPKI
-
 func main() {
 	kingpin.Version(version)
 	kingpin.Parse()
 
 	log.SetLevel(logLevels[*logLevel])
 	log.SetFormatter(logFormats[*logFormat])
-
-	if *storageBackend == "kubernetes.secrets" {
-		err := app.run()
-		if err != nil {
-			log.Error(err)
-		}
-	}
 
 	if *indexTxtPath == "" {
 		*indexTxtPath = *easyrsaDirPath + "/pki/index.txt"
@@ -567,11 +525,7 @@ func main() {
 	ovpnAdmin.modules = append(ovpnAdmin.modules, "core")
 
 	if *authByPassword {
-		if *storageBackend != "kubernetes.secrets" {
-			ovpnAdmin.modules = append(ovpnAdmin.modules, "passwdAuth")
-		} else {
-			log.Fatal("Right now the keys `--storage.backend=kubernetes.secret` and `--auth.password` are not working together. Please use only one of them ")
-		}
+		ovpnAdmin.modules = append(ovpnAdmin.modules, "passwdAuth")
 	}
 
 	if *ccdEnabled {
@@ -715,27 +669,14 @@ func (oAdmin *OvpnAdmin) renderClientConfig(username string) string {
 			hosts = append(hosts, OpenvpnServer{Host: parts[0], Port: parts[1], Protocol: parts[2]})
 		}
 
-		if *openvpnServerBehindLB {
-			var err error
-			hosts, err = getOvpnServerHostsFromKubeApi()
-			if err != nil {
-				log.Error(err)
-			}
-		}
-
 		log.Tracef("hosts for %s\n %v", username, hosts)
 
 		conf := openvpnClientConfig{}
 		conf.Hosts = hosts
 		conf.CA = fRead(*easyrsaDirPath + "/pki/ca.crt")
 		conf.TLS = fRead(*easyrsaDirPath + "/pki/ta.key")
-
-		if *storageBackend == "kubernetes.secrets" {
-			conf.Cert, conf.Key = app.easyrsaGetClientCert(username)
-		} else {
-			conf.Cert = fRead(*easyrsaDirPath + "/pki/issued/" + username + ".crt")
-			conf.Key = fRead(*easyrsaDirPath + "/pki/private/" + username + ".key")
-		}
+		conf.Cert = fRead(*easyrsaDirPath + "/pki/issued/" + username + ".crt")
+		conf.Key = fRead(*easyrsaDirPath + "/pki/private/" + username + ".key")
 
 		conf.PasswdAuth = *authByPassword
 
@@ -777,12 +718,8 @@ func (oAdmin *OvpnAdmin) parseCcd(username string) Ccd {
 	ccd.CustomRoutes = []ccdRoute{}
 
 	var txtLinesArray []string
-	if *storageBackend == "kubernetes.secrets" {
-		txtLinesArray = strings.Split(app.secretGetCcd(ccd.User), "\n")
-	} else {
-		if fExist(*ccdDir + "/" + username) {
-			txtLinesArray = strings.Split(fRead(*ccdDir+"/"+username), "\n")
-		}
+	if fExist(*ccdDir + "/" + username) {
+		txtLinesArray = strings.Split(fRead(*ccdDir+"/"+username), "\n")
 	}
 
 	for _, v := range txtLinesArray {
@@ -813,13 +750,9 @@ func (oAdmin *OvpnAdmin) modifyCcd(ccd Ccd) (bool, string) {
 		if err != nil {
 			log.Error(err)
 		}
-		if *storageBackend == "kubernetes.secrets" {
-			app.secretUpdateCcd(ccd.User, tmp.Bytes())
-		} else {
-			err = fWrite(*ccdDir+"/"+ccd.User, tmp.String())
-			if err != nil {
-				log.Errorf("modifyCcd: fWrite(): %v", err)
-			}
+		err = fWrite(*ccdDir+"/"+ccd.User, tmp.String())
+		if err != nil {
+			log.Errorf("modifyCcd: fWrite(): %v", err)
 		}
 
 		return true, "ccd updated successfully"
@@ -886,47 +819,6 @@ func (oAdmin *OvpnAdmin) getCcd(username string) Ccd {
 }
 
 func checkStaticAddressIsFree(staticAddress string, username string) bool {
-
-	if *storageBackend == "kubernetes.secrets" {
-
-		log.Infof("Static address: %s", staticAddress)
-
-		labelSelector := fmt.Sprintf("%s=%s,%s=%s",
-			labelKeyType, labelValueClientAuth,
-			labelKeyManagedBy, labelValueManagedByApp)
-
-		secrets, err := app.secretsGetByLabels(labelSelector)
-		if err != nil {
-			log.Error(err)
-		}
-
-		for _, secret := range secrets.Items {
-			otherUser := secret.Labels["name"]
-			if otherUser == username {
-				continue
-			}
-
-			dataCCD, ok := secret.Data["ccd"]
-			if !ok {
-				continue
-			}
-
-			lines := strings.Split(string(dataCCD), "\n")
-
-			for _, line := range lines {
-				if strings.HasPrefix(line, prefixStaticRoute) {
-					fields := strings.Fields(line)
-					if len(fields) >= 2 && fields[1] == staticAddress {
-						log.Warnf("IP %s already assigned to user %s", staticAddress, otherUser)
-						return false
-					}
-				}
-			}
-		}
-
-		return true
-	}
-
 	o := runBash(fmt.Sprintf("grep -rl ' %[1]s ' %[2]s | grep -vx %[2]s/%[3]s | wc -l", staticAddress, *ccdDir, username))
 
 	if strings.TrimSpace(o) == "0" {
@@ -1058,20 +950,12 @@ func (oAdmin *OvpnAdmin) userCreate(username, password string, certExpireDays in
 		}
 	}
 
-	if *storageBackend == "kubernetes.secrets" {
-		err := app.easyrsaBuildClient(username)
-		if err != nil {
-			log.Error(err)
-			return false, err.Error()
-		}
-	} else {
-		expireEnv := ""
-		if certExpireDays >= 1 && certExpireDays <= 3650 {
-			expireEnv = fmt.Sprintf("EASYRSA_CERT_EXPIRE=%d ", certExpireDays)
-		}
-		o := runBash(fmt.Sprintf("cd %s && %s%s --batch build-client-full %s nopass 1>/dev/null", *easyrsaDirPath, expireEnv, *easyrsaBinPath, username))
-		log.Debug(o)
+	expireEnv := ""
+	if certExpireDays >= 1 && certExpireDays <= 3650 {
+		expireEnv = fmt.Sprintf("EASYRSA_CERT_EXPIRE=%d ", certExpireDays)
 	}
+	o := runBash(fmt.Sprintf("cd %s && %s%s --batch build-client-full %s nopass 1>/dev/null", *easyrsaDirPath, expireEnv, *easyrsaBinPath, username))
+	log.Debug(o)
 
 	if *authByPassword {
 		o := runBash(fmt.Sprintf("openvpn-user create --db.path %s --user %s --password %s", *authDatabase, username, password))
@@ -1126,15 +1010,8 @@ func (oAdmin *OvpnAdmin) userRevoke(username string) (error, string) {
 	log.Infof("Revoke certificate for user %s", username)
 	if checkUserExist(username) {
 		// check certificate valid flag 'V'
-		if *storageBackend == "kubernetes.secrets" {
-			err := app.easyrsaRevoke(username)
-			if err != nil {
-				log.Error(err)
-			}
-		} else {
-			o := runBash(fmt.Sprintf("cd %[1]s && echo yes | %[2]s revoke %[3]s 1>/dev/null && %[2]s gen-crl 1>/dev/null", *easyrsaDirPath, *easyrsaBinPath, username))
-			log.Debugln(o)
-		}
+		o := runBash(fmt.Sprintf("cd %[1]s && echo yes | %[2]s revoke %[3]s 1>/dev/null && %[2]s gen-crl 1>/dev/null", *easyrsaDirPath, *easyrsaBinPath, username))
+		log.Debugln(o)
 
 		if *authByPassword {
 			o := runBash(fmt.Sprintf("openvpn-user revoke --db.path %s --user %s", *authDatabase, username))
@@ -1160,12 +1037,7 @@ func (oAdmin *OvpnAdmin) userRevoke(username string) (error, string) {
 
 func (oAdmin *OvpnAdmin) userUnrevoke(username string) (error, string) {
 	if checkUserExist(username) {
-		if *storageBackend == "kubernetes.secrets" {
-			err := app.easyrsaUnrevoke(username)
-			if err != nil {
-				log.Error(err)
-			}
-		} else {
+		{
 			// check certificate revoked flag 'R'
 			usersFromIndexTxt := indexTxtParser(fRead(*indexTxtPath))
 			for i := range usersFromIndexTxt {
@@ -1224,13 +1096,7 @@ func (oAdmin *OvpnAdmin) userUnrevoke(username string) (error, string) {
 
 func (oAdmin *OvpnAdmin) userRotate(username, newPassword string, certExpireDays int) (error, string) {
 	if checkUserExist(username) {
-		if *storageBackend == "kubernetes.secrets" {
-			err := app.easyrsaRotate(username, newPassword)
-			if err != nil {
-				log.Error(err)
-			}
-		} else {
-
+		{
 			var oldUserIndex, newUserIndex int
 			var oldUserSerial string
 
@@ -1298,12 +1164,7 @@ func (oAdmin *OvpnAdmin) userRotate(username, newPassword string, certExpireDays
 
 func (oAdmin *OvpnAdmin) userDelete(username string) (error, string) {
 	if checkUserExist(username) {
-		if *storageBackend == "kubernetes.secrets" {
-			err := app.easyrsaDelete(username)
-			if err != nil {
-				log.Error(err)
-			}
-		} else {
+		{
 			uniqHash := strings.Replace(uuid.New().String(), "-", "", -1)
 			usersFromIndexTxt := indexTxtParser(fRead(*indexTxtPath))
 			for i := range usersFromIndexTxt {
@@ -1634,51 +1495,6 @@ func (oAdmin *OvpnAdmin) syncWithMaster() {
 		time.Sleep(time.Duration(*masterSyncFrequency) * time.Second)
 		oAdmin.syncDataFromMaster()
 	}
-}
-
-func getOvpnServerHostsFromKubeApi() ([]OpenvpnServer, error) {
-	var hosts []OpenvpnServer
-	var lbHost string
-
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		log.Errorf("%s", err.Error())
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		log.Errorf("%s", err.Error())
-	}
-
-	for _, serviceName := range *openvpnServiceName {
-		service, err := clientset.CoreV1().Services(fRead(kubeNamespaceFilePath)).Get(context.TODO(), serviceName, metav1.GetOptions{})
-		if err != nil {
-			log.Error(err)
-		}
-
-		log.Tracef("service from kube api %v", service)
-		log.Tracef("service.Status from kube api %v", service.Status)
-		log.Tracef("service.Status.LoadBalancer from kube api %v", service.Status.LoadBalancer)
-
-		lbIngress := service.Status.LoadBalancer.Ingress
-		if len(lbIngress) > 0 {
-			if lbIngress[0].Hostname != "" {
-				lbHost = lbIngress[0].Hostname
-			}
-
-			if lbIngress[0].IP != "" {
-				lbHost = lbIngress[0].IP
-			}
-		}
-
-		hosts = append(hosts, OpenvpnServer{lbHost, strconv.Itoa(int(service.Spec.Ports[0].Port)), strings.ToLower(string(service.Spec.Ports[0].Protocol))})
-	}
-
-	if len(hosts) == 0 {
-		return []OpenvpnServer{{Host: "kubernetes services not found"}}, err
-	}
-
-	return hosts, nil
 }
 
 func getOvpnCaCertExpireDate() time.Time {
