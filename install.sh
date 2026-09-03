@@ -2,7 +2,11 @@
 #
 # ovpn-stack — установка на свежий сервер.
 #
+#   # wget есть в базовой Debian (priority: standard), curl — нет:
+#   wget -qO install.sh https://raw.githubusercontent.com/RamDll/ovpn-stack/master/install.sh
+#   # либо, если стоит curl:
 #   curl -fsSL https://raw.githubusercontent.com/RamDll/ovpn-stack/master/install.sh -o install.sh
+#
 #   sudo bash install.sh
 #
 # Что делает: проверяет дистрибутив, ставит зависимости (Docker, git, fail2ban),
@@ -163,12 +167,24 @@ local_ip() {
     | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}' || true
 }
 
+# HTTP GET одним из доступных клиентов (curl на этом этапе может быть ещё
+# не установлен — на свежей Debian есть wget, но не curl).
+http_get() {
+  if command -v curl >/dev/null; then
+    curl -fsS -4 --max-time 6 "$1" 2>/dev/null
+  elif command -v wget >/dev/null; then
+    wget -qO- --timeout=6 --inet4-only "$1" 2>/dev/null
+  else
+    return 1
+  fi
+}
+
 # Внешний IP, как его видят снаружи. Перебор трёх независимых сервисов
 # (Cloudflare / AWS / ipify) — берём первый валидный IPv4.
 external_ip() {
   local svc out
   for svc in https://icanhazip.com https://checkip.amazonaws.com https://api.ipify.org; do
-    out="$(curl -fsS -4 --max-time 6 "$svc" 2>/dev/null | tr -d '[:space:]' || true)"
+    out="$(http_get "$svc" | tr -d '[:space:]' || true)"
     if valid_ipv4 "$out"; then printf '%s' "$out"; return 0; fi
   done
   return 1
