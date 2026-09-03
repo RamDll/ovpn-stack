@@ -226,7 +226,9 @@ func (oAdmin *OvpnAdmin) userDisconnectHandler(w http.ResponseWriter, r *http.Re
 	_ = r.ParseForm()
 	username := r.FormValue("username")
 
-	connected, servers := isUserConnected(username, oAdmin.activeClients)
+	// свежий опрос mgmt, а не кэш oAdmin.activeClients (обновляется раз в 28с) —
+	// иначе только что подключившийся клиент выглядит офлайн
+	connected, servers := isUserConnected(username, oAdmin.mgmtGetActiveClients())
 	if !connected {
 		http.Error(w, fmt.Sprintf("user %q is not connected", username), http.StatusUnprocessableEntity)
 		return
