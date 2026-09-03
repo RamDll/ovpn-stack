@@ -51,11 +51,6 @@ ovpn-stack/
 - страница «Статистика»: помесячный трафик (учёт в bbolt-хранилище `data/stat/traffic.db`),
   сводка, разбивка по клиентам.
 
-Бэкенд отдаёт метрики Prometheus по `:8080/metrics` (подключённые клиенты, сроки
-годности CA и серверного сертификата, счётчики трафика `ovpn_client_traffic_*`) —
-эндпоинт есть, но наружу не публикуется и никем не скрейпится. Подключите внешний
-Prometheus, если нужны исторические графики.
-
 ## Сеть и порты
 
 Наружу публикуются только:
@@ -178,7 +173,7 @@ docker compose down                        # остановить (PKI в ./data
 - Фронтенд панели переписан с нуля (Vue 3 + Vite + TypeScript, i18n ru/en,
   тёмная/светлая темы, страница «Статистика»).
 - Помесячный учёт трафика: bbolt-хранилище `data/stat/traffic.db`, эндпоинт
-  `api/statistic`, счётчики Prometheus `ovpn_client_traffic_{received,sent}_total`.
+  `api/statistic`.
 - `openvpn`: добавлен `sysctl net.ipv4.ip_forward=1` (нужен для redirect-gateway).
 - CI (`.github/workflows/ci.yml`): на каждый push/PR поднимает стек целиком и
   прогоняет smoke-проверки. Обновления зависимостей — через Dependabot.
@@ -192,7 +187,7 @@ docker compose down                        # остановить (PKI в ./data
 
 - **Kubernetes-бэкенд** (`STORAGE_BACKEND=kubernetes.secrets`): весь
   `kubernetes.go`, генерация PKI на Go (`certificates.go`), Helm-чарт,
-  зависимости `k8s.io/*` (~35 модулей). `go.mod` 60 → 25 строк.
+  зависимости `k8s.io/*` (~35 модулей).
 - **Парольная аутентификация** (`OVPN_AUTH`): сторонний бинарь `openvpn-user`,
   `auth.sh`, эндпоинт смены пароля, модуль `passwdAuth` в панели.
 - **Режим slave и master/slave-репликация**: флаги `--role` / `--master.*`,
@@ -203,13 +198,18 @@ docker compose down                        # остановить (PKI в ./data
   `werf.yaml`) и материалы README апстрима.
 - Сборка `ovpn-admin` переведена на `CGO_ENABLED=0` (образ 98 → 43 МБ).
 
+Совокупно `go.mod` ужался с 60 строк (9 прямых зависимостей + большое дерево
+транзитивных) до 8 строк: `google/uuid`, `sirupsen/logrus`, `go.etcd.io/bbolt`,
+`kingpin.v2` и 4 indirect. Бинарь `ovpn-admin` — ~9.8 МБ.
+
 ### Выпилен мониторинг
 
 Убраны Prometheus, Grafana и node-exporter (каталог `monitoring/`, ~1.4 ГБ
 образов, ~250 МБ RAM). Мгновенное состояние (CPU/ОЗУ/загрузка, онлайн, трафик
 за сессию) и помесячный учёт трафика по клиентам остаются в панели — они не
-зависели от Prometheus. Потеряны только исторические графики во времени;
-эндпоинт `:8080/metrics` сохранён для внешнего Prometheus при желании.
+зависели от Prometheus. Заодно из бэкенда убран Prometheus-инструментарий
+(`prometheus/client_golang` и эндпоинт `:8080/metrics`): счётчики `ovpn_*`
+дублировали данные, которые панель и так считает из mgmt-интерфейса и bbolt.
 
 ## Лицензия
 
