@@ -365,7 +365,9 @@ gen_selfsigned() {
 
 compose_up() {
   step "Сборка и запуск стека (первый раз — несколько минут)"
-  docker compose build >/dev/null
+  # --progress=plain: без него BuildKit пытается захватить консоль и падает
+  # с "failed to get console: provided file is not a console" при не-TTY выводе.
+  docker compose build --progress=plain
   docker compose up -d --wait --wait-timeout 300
   ok "все сервисы healthy"
   docker compose ps --format 'table {{.Service}}\t{{.Status}}' | sed 's/^/    /'
