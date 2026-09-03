@@ -31,7 +31,6 @@ export default {
     loadError: 'Could not load statistics',
   },
   shell: {
-    lastSync: 'last sync: {time}',
     language: 'Interface language',
     theme: 'Colour theme',
   },
@@ -138,7 +137,6 @@ export default {
   },
   ccd: {
     title: 'Client routes',
-    titleReadonly: 'Routes (read-only)',
     staticAddress: 'Static address',
     reset: 'Reset',
     address: 'Address',
@@ -147,7 +145,6 @@ export default {
     descPlaceholder: 'description',
     addRoute: 'Add route',
     removeRoute: 'Remove route',
-    noRoutes: 'no routes',
   },
   toast: {
     userCreated: 'User {name} created',

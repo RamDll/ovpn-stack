@@ -17,8 +17,6 @@ export const ovpn = {
 
   systemStats: () => apiGet<SystemStats>('api/server/stats'),
 
-  lastSuccessfulSync: () => apiGet<string>('api/sync/last/successful'),
-
   createUser: (username: string, expireDays = 0) =>
     apiForm('api/user/create', { username, expire: String(expireDays) }),
 

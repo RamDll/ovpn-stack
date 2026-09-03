@@ -21,7 +21,7 @@ const {
   filtered, stats, search, loading, error, refresh, users,
   filterOnline, filterRevoked, sortKey, sortDir, toggleSort,
 } = useUsers()
-const { role, modules, isMaster, isSlave } = useServerSettings()
+const { modules } = useServerSettings()
 const { stats: sys, refresh: refreshSys } = useServerStats()
 
 const anyFilter = computed(
@@ -87,7 +87,6 @@ function onAction(action: RowAction, username: string) {
   <div class="card">
     <Toolbar
       :search="search"
-      :can-create="isMaster"
       :filter-online="filterOnline"
       :filter-revoked="filterRevoked"
       :revoked-count="stats.revoked"
@@ -100,7 +99,6 @@ function onAction(action: RowAction, username: string) {
     <UsersTable
       :rows="filtered"
       :loading="loading"
-      :role="role"
       :modules="modules"
       :traffic="trafficByUser"
       :sort-key="sortKey"
@@ -134,7 +132,6 @@ function onAction(action: RowAction, username: string) {
     v-if="ccd"
     :open="true"
     :username="ccd"
-    :readonly="isSlave"
     @update:open="ccd = null"
   />
 </template>

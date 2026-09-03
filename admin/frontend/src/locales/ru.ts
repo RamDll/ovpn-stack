@@ -31,7 +31,6 @@ export default {
     loadError: 'Не удалось загрузить статистику',
   },
   shell: {
-    lastSync: 'последняя синхронизация: {time}',
     language: 'Язык интерфейса',
     theme: 'Тема оформления',
   },
@@ -138,7 +137,6 @@ export default {
   },
   ccd: {
     title: 'Маршруты клиента',
-    titleReadonly: 'Маршруты (только чтение)',
     staticAddress: 'Статический адрес',
     reset: 'Сбросить',
     address: 'Адрес',
@@ -147,7 +145,6 @@ export default {
     descPlaceholder: 'описание',
     addRoute: 'Добавить маршрут',
     removeRoute: 'Удалить маршрут',
-    noRoutes: 'маршрутов нет',
   },
   toast: {
     userCreated: 'Пользователь {name} создан',

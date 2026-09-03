@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { useServerSettings } from '@/composables/useServerSettings'
 import { useView } from '@/composables/useView'
 import { useTheme } from '@/composables/useTheme'
 import { setLocale } from '@/i18n'
 
 const { t, locale } = useI18n()
-const { isSlave, lastSync } = useServerSettings()
 const { view, go } = useView()
 const { theme, toggle: toggleTheme } = useTheme()
 
@@ -33,8 +31,6 @@ function toggleLocale() {
     </nav>
 
     <span class="spacer" />
-
-    <span v-if="isSlave" class="sync">{{ t('shell.lastSync', { time: lastSync }) }}</span>
 
     <button class="icon-btn" type="button" :title="t('shell.language')" @click="toggleLocale">
       {{ locale === 'ru' ? 'РУС' : 'ENG' }}
@@ -110,11 +106,6 @@ function toggleLocale() {
 .spacer {
   flex: 1;
 }
-.sync {
-  color: var(--text-faint);
-  font-family: var(--mono);
-  font-size: var(--fs-xs);
-}
 .icon-btn {
   appearance: none;
   background: transparent;
@@ -152,8 +143,7 @@ function toggleLocale() {
     flex: 1 1 auto;
     min-width: 0;
   }
-  .spacer,
-  .sync {
+  .spacer {
     display: none;
   }
   /* строка 2: вкладки на всю ширину, как сегментированный переключатель */
