@@ -155,14 +155,24 @@ check_prereqs() {
 }
 
 # ---------------------------------------------------------------------------
-autodetect_ip() {
-  local ip=""
-  ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}' || true)"
-  [[ -z "$ip" ]] && ip="$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)"
-  printf '%s' "$ip"
+valid_ipv4() { [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; }
+
+# IP на интерфейсе (для обычного VPS = публичный; за NAT — приватный)
+local_ip() {
+  ip -4 route get 1.1.1.1 2>/dev/null \
+    | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}' || true
 }
 
-valid_ipv4() { [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; }
+# Внешний IP, как его видят снаружи. Перебор трёх независимых сервисов
+# (Cloudflare / AWS / ipify) — берём первый валидный IPv4.
+external_ip() {
+  local svc out
+  for svc in https://icanhazip.com https://checkip.amazonaws.com https://api.ipify.org; do
+    out="$(curl -fsS -4 --max-time 6 "$svc" 2>/dev/null | tr -d '[:space:]' || true)"
+    if valid_ipv4 "$out"; then printf '%s' "$out"; return 0; fi
+  done
+  return 1
+}
 
 gen_pass() { # 20 буквенно-цифровых символов, без SIGPIPE-падения под pipefail
   local out
@@ -173,34 +183,53 @@ gen_pass() { # 20 буквенно-цифровых символов, без SIG
 prompt_config() {
   step "Параметры установки"
 
+  # --- определить внешний IP заранее (пригодится и для домена, и для голого IP) ---
+  local ext="" lan=""
+  if [[ -z "$PUBLIC_IP" ]]; then
+    info "Определяю публичный IP…"
+    ext="$(external_ip || true)"
+    lan="$(local_ip)"
+    if [[ -n "$ext" && -n "$lan" && "$ext" != "$lan" ]]; then
+      warn "внешний IP: $ext,  адрес интерфейса: $lan  — вероятно NAT / floating IP"
+    elif [[ -n "$ext" ]]; then
+      info "публичный IP: $ext"
+    else
+      warn "автоматически определить IP не вышло (сервисы недоступны)"
+    fi
+  fi
+
   # --- адрес: домен или IP ---
   if [[ -z "$DOMAIN" && -z "$PUBLIC_IP" ]]; then
-    if (( NONINTERACTIVE )); then die "в режиме --yes нужен --domain или --ip"; fi
-    local guess; guess="$(autodetect_ip)"
-    info "TLS-сертификат можно выпустить на домен (надёжнее) или на голый IP"
+    (( NONINTERACTIVE )) && die "в режиме --yes нужен --domain или --ip"
+    info ""
+    info "TLS можно выпустить на домен (надёжнее) или на этот IP"
     info "(Let's Encrypt для IP — короткоживущий профиль ~6 дней, обновляется автоматически)."
-    read -r -p "    Домен (Enter — использовать IP $guess): " DOMAIN || true
+    read -r -p "    Домен (Enter — использовать IP): " DOMAIN || true
     if [[ -z "$DOMAIN" ]]; then
-      read -r -p "    Публичный IP [$guess]: " PUBLIC_IP || true
-      PUBLIC_IP="${PUBLIC_IP:-$guess}"
+      if [[ -n "$ext" ]]; then
+        read -r -p "    Публичный IP [$ext] (Enter — принять, или впиши правильный): " PUBLIC_IP || true
+        PUBLIC_IP="${PUBLIC_IP:-$ext}"
+      else
+        while [[ -z "$PUBLIC_IP" ]]; do read -r -p "    Публичный IP (обязательно): " PUBLIC_IP || true; done
+      fi
     fi
   fi
 
   if [[ -n "$DOMAIN" ]]; then
     ADDR="$DOMAIN"
     local resolved; resolved="$(getent hosts "$DOMAIN" 2>/dev/null | awk '{print $1; exit}')"
-    local myip; myip="$(autodetect_ip)"
-    if [[ -n "$resolved" && -n "$myip" && "$resolved" != "$myip" ]]; then
-      warn "A-запись $DOMAIN → $resolved, а IP сервера — $myip. Проверь DNS, иначе acme http-01 не пройдёт."
+    if [[ -n "$resolved" && -n "$ext" && "$resolved" != "$ext" ]]; then
+      warn "A-запись $DOMAIN → $resolved, а внешний IP сервера — $ext. Проверь DNS, иначе acme http-01 не пройдёт."
       confirm "Всё равно продолжить?" n || die "прервано"
     fi
-    PUBLIC_IP="${PUBLIC_IP:-${resolved:-$myip}}"
   else
-    [[ -n "$PUBLIC_IP" ]] || PUBLIC_IP="$(autodetect_ip)"
-    valid_ipv4 "$PUBLIC_IP" || die "не похоже на IPv4: '$PUBLIC_IP' (задай --ip)"
+    [[ -n "$PUBLIC_IP" ]] || PUBLIC_IP="$ext"
+    valid_ipv4 "$PUBLIC_IP" || die "не похоже на IPv4: '$PUBLIC_IP' (задай --ip или --domain)"
     ADDR="$PUBLIC_IP"
   fi
-  ok "адрес: $ADDR   (IP для .ovpn: $PUBLIC_IP)"
+  # адрес, по которому клиенты подключаются (домен или IP) — он же в .ovpn и .env
+  PUBLIC_IP="$ADDR"
+  ok "адрес подключения: $ADDR"
 
   # --- логин/пароль панели ---
   if (( ! NONINTERACTIVE )); then
@@ -301,7 +330,7 @@ write_env() {
   else
     umask 077
     cat > .env <<EOF
-VPS_PUBLIC_IP=$PUBLIC_IP
+VPS_PUBLIC_IP=$ADDR
 BASIC_AUTH_USER=$PANEL_USER
 BASIC_AUTH_PASSWORD=$PANEL_PASS
 OVPN_SERVER_NAME=
@@ -318,7 +347,7 @@ services:
     ports: !override ["$OVPN_PORT:1194/udp"]
   ovpn-admin:
     environment:
-      OVPN_SERVER: "$PUBLIC_IP:$OVPN_PORT:udp"
+      OVPN_SERVER: "$ADDR:$OVPN_PORT:udp"
 EOF
     ok "docker-compose.override.yaml — порт $OVPN_PORT"
   fi
@@ -523,7 +552,7 @@ summary() {
   step "Готово"
   cat <<EOF
     Панель:    $url        (Basic Auth: $PANEL_USER / см. $INSTALL_DIR/.env)
-    OpenVPN:   $PUBLIC_IP:$OVPN_PORT/udp
+    OpenVPN:   $ADDR:$OVPN_PORT/udp
     Каталог:   $INSTALL_DIR
     Управление:
       cd $INSTALL_DIR && docker compose ps
@@ -548,8 +577,7 @@ main() {
   prompt_config
 
   step "Сводка перед установкой"
-  info "адрес . . . . . $ADDR"
-  info "IP для .ovpn  . $PUBLIC_IP"
+  info "адрес подключения  $ADDR"
   info "панель  . . . . $PANEL_USER"
   info "OpenVPN порт  . $OVPN_PORT/udp"
   info "каталог . . . . $INSTALL_DIR"
