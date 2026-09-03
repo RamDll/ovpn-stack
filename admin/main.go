@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -75,13 +74,12 @@ var logFormats = map[string]log.Formatter{
 }
 
 type OvpnAdmin struct {
-	clients              []OpenvpnClient
-	activeClients        []clientStatus
-	mgmtInterfaces       map[string]string
-	modules              []string
-	mgmtStatusTimeFormat string
-	createUserMutex      *sync.Mutex
-	stat                 *statStore
+	clients         []OpenvpnClient
+	activeClients   []clientStatus
+	mgmtInterfaces  map[string]string
+	modules         []string
+	createUserMutex *sync.Mutex
+	stat            *statStore
 }
 
 type OpenvpnServer struct {
@@ -104,7 +102,6 @@ type OpenvpnClient struct {
 	ExpirationDate   string `json:"ExpirationDate"`
 	RevocationDate   string `json:"RevocationDate"`
 	ConnectionStatus string `json:"ConnectionStatus"`
-	Connections      int    `json:"Connections"`
 	LastSeen         int64  `json:"LastSeen"` // unix, последнее появление онлайн; 0 — не видели
 }
 
@@ -131,16 +128,13 @@ type indexTxtLine struct {
 }
 
 type clientStatus struct {
-	CommonName              string
-	RealAddress             string
-	BytesReceived           string
-	BytesSent               string
-	ConnectedSince          string
-	VirtualAddress          string
-	LastRef                 string
-	ConnectedSinceFormatted string
-	LastRefFormatted        string
-	ConnectedTo             string
+	CommonName     string
+	RealAddress    string
+	BytesReceived  string
+	BytesSent      string
+	ConnectedSince string
+	VirtualAddress string
+	ConnectedTo    string
 }
 
 func (oAdmin *OvpnAdmin) userListHandler(w http.ResponseWriter, r *http.Request) {
@@ -166,7 +160,7 @@ func (oAdmin *OvpnAdmin) userCreateHandler(w http.ResponseWriter, r *http.Reques
 	if userCreated {
 		oAdmin.clients = oAdmin.usersList()
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, userCreateStatus)
+		fmt.Fprint(w, userCreateStatus)
 		return
 	} else {
 		http.Error(w, userCreateStatus, http.StatusUnprocessableEntity)
@@ -181,7 +175,7 @@ func (oAdmin *OvpnAdmin) userRotateHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	} else {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, msg)
+		fmt.Fprint(w, msg)
 	}
 }
 
@@ -193,7 +187,7 @@ func (oAdmin *OvpnAdmin) userDeleteHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	} else {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, msg)
+		fmt.Fprint(w, msg)
 	}
 }
 
@@ -205,7 +199,7 @@ func (oAdmin *OvpnAdmin) userRevokeHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	} else {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, msg)
+		fmt.Fprint(w, msg)
 	}
 }
 
@@ -217,7 +211,7 @@ func (oAdmin *OvpnAdmin) userUnrevokeHandler(w http.ResponseWriter, r *http.Requ
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	} else {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, msg)
+		fmt.Fprint(w, msg)
 	}
 }
 
@@ -230,8 +224,19 @@ func (oAdmin *OvpnAdmin) userShowConfigHandler(w http.ResponseWriter, r *http.Re
 func (oAdmin *OvpnAdmin) userDisconnectHandler(w http.ResponseWriter, r *http.Request) {
 	log.Info(r.RemoteAddr, " ", r.RequestURI)
 	_ = r.ParseForm()
-	// 	fmt.Fprintf(w, "%s", userDisconnect(r.FormValue("username")))
-	fmt.Fprintf(w, "%s", r.FormValue("username"))
+	username := r.FormValue("username")
+
+	connected, servers := isUserConnected(username, oAdmin.activeClients)
+	if !connected {
+		http.Error(w, fmt.Sprintf("user %q is not connected", username), http.StatusUnprocessableEntity)
+		return
+	}
+	for _, srv := range servers {
+		oAdmin.mgmtKillUserConnection(username, srv)
+		log.Infof("Session for user %q killed", username)
+	}
+	oAdmin.setState()
+	fmt.Fprintf(w, "%s", username)
 }
 
 func (oAdmin *OvpnAdmin) userShowCcdHandler(w http.ResponseWriter, r *http.Request) {
@@ -258,7 +263,7 @@ func (oAdmin *OvpnAdmin) userApplyCcdHandler(w http.ResponseWriter, r *http.Requ
 
 	if ccdApplied {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, applyStatus)
+		fmt.Fprint(w, applyStatus)
 		return
 	} else {
 		http.Error(w, applyStatus, http.StatusUnprocessableEntity)
@@ -299,8 +304,6 @@ func main() {
 		parts := strings.SplitN(mgmtInterface, "=", 2)
 		ovpnAdmin.mgmtInterfaces[parts[0]] = parts[len(parts)-1]
 	}
-
-	ovpnAdmin.mgmtSetTimeFormat()
 
 	ovpnAdmin.stat = newStatStore(*statDbPath)
 
@@ -572,13 +575,13 @@ func checkStaticAddressIsFree(staticAddress string, username string) bool {
 	return false
 }
 
+var validUsername = regexp.MustCompile(usernameRegexp)
+
 func validateUsername(username string) error {
-	var validUsername = regexp.MustCompile(usernameRegexp)
 	if validUsername.MatchString(username) {
 		return nil
-	} else {
-		return errors.New(fmt.Sprintf("Username can only contains %s", usernameRegexp))
 	}
+	return fmt.Errorf("username can only contain %s", usernameRegexp)
 }
 
 func checkUserExist(username string) bool {
@@ -621,15 +624,10 @@ func (oAdmin *OvpnAdmin) usersList() []OpenvpnClient {
 					ovpnClient.AccountStatus = "Expired"
 				}
 			}
-			ovpnClient.Connections = 0
 			ovpnClient.LastSeen = oAdmin.stat.lastSeenOf(line.Identity)
 
-			userConnected, userConnectedTo := isUserConnected(line.Identity, oAdmin.activeClients)
-			if userConnected {
+			if connected, _ := isUserConnected(line.Identity, oAdmin.activeClients); connected {
 				ovpnClient.ConnectionStatus = "Connected"
-				for range userConnectedTo {
-					ovpnClient.Connections += 1
-				}
 			}
 
 			users = append(users, ovpnClient)
@@ -876,40 +874,41 @@ func (oAdmin *OvpnAdmin) mgmtConnectedUsersParser(text, serverName string) []cli
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	for scanner.Scan() {
 		txt := scanner.Text()
-		if regexp.MustCompile(`^Common Name,Real Address,Bytes Received,Bytes Sent,Connected Since$`).MatchString(txt) {
+		switch txt {
+		case "Common Name,Real Address,Bytes Received,Bytes Sent,Connected Since":
 			isClientList = true
 			continue
-		}
-		if regexp.MustCompile(`^ROUTING TABLE$`).MatchString(txt) {
+		case "ROUTING TABLE":
 			isClientList = false
 			continue
-		}
-		if regexp.MustCompile(`^Virtual Address,Common Name,Real Address,Last Ref$`).MatchString(txt) {
+		case "Virtual Address,Common Name,Real Address,Last Ref":
 			isRouteTable = true
 			continue
-		}
-		if regexp.MustCompile(`^GLOBAL STATS$`).MatchString(txt) {
-			// isRouteTable = false // ineffectual assignment to isRouteTable (ineffassign)
-			break
+		case "GLOBAL STATS":
+			isClientList, isRouteTable = false, false
 		}
 		if isClientList {
 			user := strings.Split(txt, ",")
-
-			userName := user[0]
-			userAddress := user[1]
-			userBytesReceived := user[2]
-			userBytesSent := user[3]
-			userConnectedSince := user[4]
-
-			userStatus := clientStatus{CommonName: userName, RealAddress: userAddress, BytesReceived: userBytesReceived, BytesSent: userBytesSent, ConnectedSince: userConnectedSince, ConnectedTo: serverName}
-			u = append(u, userStatus)
+			if len(user) < 5 {
+				continue
+			}
+			u = append(u, clientStatus{
+				CommonName:     user[0],
+				RealAddress:    user[1],
+				BytesReceived:  user[2],
+				BytesSent:      user[3],
+				ConnectedSince: user[4],
+				ConnectedTo:    serverName,
+			})
 		}
 		if isRouteTable {
 			user := strings.Split(txt, ",")
+			if len(user) < 2 {
+				continue
+			}
 			for i := range u {
 				if u[i].CommonName == user[1] {
 					u[i].VirtualAddress = user[0]
-					u[i].LastRef = user[3]
 					break
 				}
 			}
@@ -947,77 +946,6 @@ func (oAdmin *OvpnAdmin) mgmtGetActiveClients() []clientStatus {
 	return activeClients
 }
 
-func (oAdmin *OvpnAdmin) mgmtSetTimeFormat() {
-	// time format for version 2.5 and may be newer
-	oAdmin.mgmtStatusTimeFormat = "2006-01-02 15:04:05"
-	log.Debugf("mgmtStatusTimeFormat: %s", oAdmin.mgmtStatusTimeFormat)
-
-	type serverVersion struct {
-		name    string
-		version string
-	}
-
-	var serverVersions []serverVersion
-
-	for srv, addr := range oAdmin.mgmtInterfaces {
-
-		var conn net.Conn
-		var err error
-		for connAttempt := 0; connAttempt < 10; connAttempt++ {
-			conn, err = net.Dial("tcp", addr)
-			if err == nil {
-				log.Debugf("mgmtSetTimeFormat: successful connection to %s/%s", srv, addr)
-				break
-			}
-			log.Warnf("mgmtSetTimeFormat: openvpn mgmt interface for %s is not reachable by addr %s", srv, addr)
-			time.Sleep(time.Duration(2) * time.Second)
-		}
-		if err != nil {
-			break
-		}
-
-		oAdmin.mgmtRead(conn) // read welcome message
-		conn.Write([]byte("version\n"))
-		out := oAdmin.mgmtRead(conn)
-		conn.Close()
-
-		log.Trace(out)
-
-		for _, s := range strings.Split(out, "\n") {
-			if strings.Contains(s, "OpenVPN Version:") {
-				serverVersions = append(serverVersions, serverVersion{srv, strings.Split(s, " ")[3]})
-				break
-			}
-		}
-	}
-
-	if len(serverVersions) == 0 {
-		return
-	}
-
-	firstVersion := serverVersions[0].version
-
-	if strings.HasPrefix(firstVersion, "2.4") {
-		oAdmin.mgmtStatusTimeFormat = time.ANSIC
-		log.Debugf("mgmtStatusTimeFormat changed: %s", oAdmin.mgmtStatusTimeFormat)
-	}
-
-	warn := ""
-	for _, v := range serverVersions {
-		if firstVersion != v.version {
-			warn = "mgmtSetTimeFormat: servers have different versions of openvpn, user connection status may not work"
-			log.Warn(warn)
-			break
-		}
-	}
-
-	if warn != "" {
-		for _, v := range serverVersions {
-			log.Infof("server name: %s, version: %s", v.name, v.version)
-		}
-	}
-}
-
 func isUserConnected(username string, connectedUsers []clientStatus) (bool, []string) {
 	var connections []string
 	var connected = false
@@ -1040,7 +968,7 @@ func getOvpnServerCertExpireDate() time.Time {
 }
 
 func certNotAfter(path, name string) time.Time {
-	raw, err := ioutil.ReadFile(path)
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		log.Errorf("error read file %s: %s", path, err.Error())
 		return time.Now()
