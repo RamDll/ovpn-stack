@@ -5,7 +5,7 @@ import Toolbar from './Toolbar.vue'
 import UsersTable from './UsersTable.vue'
 import type { RowAction } from './UsersTable.vue'
 import AddUserModal from './modals/AddUserModal.vue'
-import PasswordModal from './modals/PasswordModal.vue'
+import RotateModal from './modals/RotateModal.vue'
 import ConfirmModal from './modals/ConfirmModal.vue'
 import type { ConfirmKind } from './modals/ConfirmModal.vue'
 import ConfigModal from './modals/ConfigModal.vue'
@@ -21,7 +21,7 @@ const {
   filtered, stats, search, loading, error, refresh, users,
   filterOnline, filterRevoked, sortKey, sortDir, toggleSort,
 } = useUsers()
-const { role, modules, isMaster, isSlave, hasModule } = useServerSettings()
+const { role, modules, isMaster, isSlave } = useServerSettings()
 const { stats: sys, refresh: refreshSys } = useServerStats()
 
 const anyFilter = computed(
@@ -48,18 +48,15 @@ onBeforeUnmount(() => window.clearInterval(poll))
 
 
 const addOpen = ref(false)
-const pwd = shallowRef<{ mode: 'change' | 'rotate'; username: string } | null>(null)
+const pwd = shallowRef<{ username: string } | null>(null)
 const confirm = shallowRef<{ kind: ConfirmKind; username: string } | null>(null)
 const cfg = shallowRef<string | null>(null)
 const ccd = shallowRef<string | null>(null)
 
 function onAction(action: RowAction, username: string) {
   switch (action) {
-    case 'change-password':
-      pwd.value = { mode: 'change', username }
-      break
     case 'rotate':
-      pwd.value = { mode: 'rotate', username }
+      pwd.value = { username }
       break
     case 'revoke':
     case 'unrevoke':
@@ -116,12 +113,10 @@ function onAction(action: RowAction, username: string) {
 
   <AddUserModal v-model:open="addOpen" />
 
-  <PasswordModal
+  <RotateModal
     v-if="pwd"
     :open="true"
     :username="pwd.username"
-    :mode="pwd.mode"
-    :ask-password="hasModule('passwdAuth')"
     @update:open="pwd = null"
   />
 

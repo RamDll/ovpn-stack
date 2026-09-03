@@ -21,10 +21,6 @@ remote-cert-tls server
 #up /etc/openvpn/update-systemd-resolved
 #down /etc/openvpn/update-systemd-resolved
 
-{{- if .PasswdAuth }}
-auth-user-pass
-{{- end }}
-
 <cert>
 {{ .Cert -}}
 </cert>
