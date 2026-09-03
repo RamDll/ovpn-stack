@@ -121,9 +121,9 @@ acme.sh --issue --server letsencrypt -d <IP> \
 docker compose up -d --build
 ```
 
-Первый старт долгий: контейнер `openvpn` генерирует CA, серверный сертификат и
-DH-параметры (может занять несколько минут на 1 vCPU). `ovpn-admin` стартует
-после того, как `openvpn` станет healthy.
+При первом старте контейнер `openvpn` генерирует EC-PKI (CA + серверный
+сертификат, prime256v1) — это несколько секунд. `ovpn-admin` стартует после
+того, как `openvpn` станет healthy.
 
 Проверка:
 
@@ -170,7 +170,7 @@ docker compose down -v                                # + удалить дан�
 
 - Панель и Grafana закрыты Basic Auth на nginx; `.htpasswd` генерируется из
   `.env` и не хранится в репозитории.
-- OpenVPN — только по клиентскому сертификату (`OVPN_AUTH: "false"`), `tls-crypt`,
+- OpenVPN — только по клиентскому сертификату (EC prime256v1), `tls-crypt`,
   `AES-256-GCM`, `auth SHA256`, `tls-version-min 1.2`.
 - Наружу открыты только 443/tcp, 80/tcp (редирект + ACME) и 7777/udp.
 - fail2ban (каталог `fail2ban/`): бан IP за перебор Basic Auth. Ставится на хост —
@@ -199,12 +199,29 @@ docker compose down -v                                # + удалить дан�
 - `openvpn`: добавлен `sysctl net.ipv4.ip_forward=1` (нужен для redirect-gateway).
 - Образы `prometheus` / `grafana` / `node-exporter` запинены на конкретные
   версии вместо `:latest`.
-- `admin/Dockerfile.*`: `ARG TARGETARCH` получил дефолт `=amd64` — сборка
-  работает и без BuildKit (для multi-arch BuildKit подставит реальную арку).
 - CI (`.github/workflows/ci.yml`): на каждый push/PR поднимает стек целиком и
   прогоняет smoke-проверки. Обновления зависимостей — через Dependabot.
 - Каталог `fail2ban/` + дублирование лога nginx в `nginx/f2b-log/` для бана
   перебора Basic Auth (см. раздел «Безопасность»).
+- Всем сервисам — ротация логов Docker (`json-file`, 10 МБ × 3).
+
+### Выпилено из форка `admin/`
+
+Стек рассчитан на один self-hosted сервер, поэтому из форка `palark/ovpn-admin`
+убраны сценарии, которые здесь не используются:
+
+- **Kubernetes-бэкенд** (`STORAGE_BACKEND=kubernetes.secrets`): весь
+  `kubernetes.go`, генерация PKI на Go (`certificates.go`), Helm-чарт,
+  зависимости `k8s.io/*` (~35 модулей). `go.mod` 60 → 25 строк.
+- **Парольная аутентификация** (`OVPN_AUTH`): сторонний бинарь `openvpn-user`,
+  `auth.sh`, эндпоинт смены пароля, модуль `passwdAuth` в панели.
+- **Режим slave и master/slave-репликация**: флаги `--role` / `--master.*`,
+  эндпоинты `api/sync/*` и `api/data/*/download`, скачивание/распаковка архивов.
+- **RSA + статические DH** → EC-PKI (prime256v1); `dh none`. Первый старт из
+  минут превратился в секунды.
+- Апстримные скрипты сборки (`Makefile`, `build*.sh`, `install-deps*.sh`,
+  `werf.yaml`) и материалы README апстрима.
+- Сборка `ovpn-admin` переведена на `CGO_ENABLED=0` (образ 98 → 43 МБ).
 
 ## Лицензия
 
