@@ -16,9 +16,12 @@ else
   echo "Generating new certs"
   easyrsa --batch init-pki
   cp -R /usr/share/easy-rsa/* $EASY_RSA_LOC/pki
+  # EC-PKI: быстрее RSA, DH-параметры не нужны (dh none в openvpn.conf).
+  # vars лежит в pki/ на общем volume — ovpn-admin выпускает клиентские
+  # сертификаты тем же алгоритмом.
+  printf 'set_var EASYRSA_ALGO ec\nset_var EASYRSA_CURVE prime256v1\n' > $EASY_RSA_LOC/pki/vars
   echo "ca" | easyrsa build-ca nopass
   easyrsa --batch build-server-full server nopass
-  easyrsa gen-dh
   openvpn --genkey --secret ./pki/ta.key
 fi
 easyrsa gen-crl
