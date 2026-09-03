@@ -164,6 +164,12 @@ autodetect_ip() {
 
 valid_ipv4() { [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; }
 
+gen_pass() { # 20 буквенно-цифровых символов, без SIGPIPE-падения под pipefail
+  local out
+  out="$( (LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null || true) | head -c 20 || true)"
+  printf '%s' "$out"
+}
+
 prompt_config() {
   step "Параметры установки"
 
@@ -207,7 +213,7 @@ prompt_config() {
     while :; do
       read -r -s -p "    Пароль панели (Enter — сгенерировать): " p1; echo
       if [[ -z "$p1" ]]; then
-        p1="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)"
+        p1="$(gen_pass)"
         info "сгенерирован: $p1"
         PANEL_PASS="$p1"; break
       fi
@@ -243,6 +249,7 @@ prompt_config() {
   if (( DO_ACME && ! NONINTERACTIVE )) && [[ -z "$ACME_EMAIL" ]]; then
     read -r -p "    E-mail для Let's Encrypt (Enter — пропустить): " ACME_EMAIL || true
   fi
+  return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -266,7 +273,8 @@ install_packages() {
   fi
   docker compose version >/dev/null 2>&1 || die "нет 'docker compose' (плагин v2). Обнови Docker."
 
-  (( DO_FAIL2BAN )) && { apt_install fail2ban; ok "fail2ban"; }
+  if (( DO_FAIL2BAN )); then apt_install fail2ban; ok "fail2ban"; fi
+  return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -314,6 +322,7 @@ services:
 EOF
     ok "docker-compose.override.yaml — порт $OVPN_PORT"
   fi
+  return 0
 }
 
 gen_selfsigned() {
