@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 	bolt "go.etcd.io/bbolt"
 )
@@ -16,20 +15,7 @@ import (
 //
 // OpenVPN management-интерфейс отдаёт только счётчики текущей сессии подключённого
 // клиента; при отключении они пропадают. Здесь на каждом опросе считается прирост
-// байт по каждому активному клиенту и складывается в помесячные бакеты (bbolt),
-// а также в Prometheus-счётчики ovpn_client_traffic_{received,sent}_total.
-
-var (
-	ovpnClientTrafficReceivedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "ovpn_client_traffic_received_total",
-		Help: "openvpn user total bytes received (accumulated across sessions)",
-	}, []string{"client"})
-
-	ovpnClientTrafficSentTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "ovpn_client_traffic_sent_total",
-		Help: "openvpn user total bytes sent (accumulated across sessions)",
-	}, []string{"client"})
-)
+// байт по каждому активному клиенту и складывается в помесячные бакеты (bbolt).
 
 const (
 	statBucket     = "traffic_monthly"
@@ -142,8 +128,6 @@ func (s *statStore) record(active []clientStatus) {
 		if dRx == 0 && dTx == 0 {
 			continue
 		}
-		ovpnClientTrafficReceivedTotal.WithLabelValues(c.CommonName).Add(float64(dRx))
-		ovpnClientTrafficSentTotal.WithLabelValues(c.CommonName).Add(float64(dTx))
 		s.addToMonth(c.CommonName, dRx, dTx)
 		s.addToDay(c.CommonName, dRx, dTx)
 	}

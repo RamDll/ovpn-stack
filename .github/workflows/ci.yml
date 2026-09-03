@@ -51,9 +51,9 @@ jobs:
           test "$(curl -sk -o /dev/null -w '%{http_code}' \
                   -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASSWORD" https://localhost/)" = 200
 
-          # ovpn-admin отдаёт метрики Prometheus (эндпоинт есть, но снаружи не скрейпится)
+          # панель отдаёт список клиентов (JSON-массив)
           docker compose exec -T ovpn-admin \
-            wget -qO- http://127.0.0.1:8080/metrics | grep -q '^ovpn_'
+            wget -qO- http://127.0.0.1:8080/api/users/list | grep -q '^\['
 
           echo "OK: стек поднялся и отвечает"
 

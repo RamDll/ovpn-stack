@@ -23,8 +23,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -49,7 +47,6 @@ var (
 	openvpnNetwork           = kingpin.Flag("ovpn.network", "NETWORK/MASK_PREFIX for OpenVPN server").Default("172.16.100.0/24").Envar("OVPN_NETWORK").String()
 	openvpnServer            = kingpin.Flag("ovpn.server", "HOST:PORT:PROTOCOL for OpenVPN server; can have multiple values").Default("127.0.0.1:7777:tcp").Envar("OVPN_SERVER").PlaceHolder("HOST:PORT:PROTOCOL").Strings()
 	mgmtAddress              = kingpin.Flag("mgmt", "ALIAS=HOST:PORT for OpenVPN server mgmt interface; can have multiple values").Default("main=127.0.0.1:8989").Envar("OVPN_MGMT").Strings()
-	metricsPath              = kingpin.Flag("metrics.path", "URL path for exposing collected metrics").Default("/metrics").Envar("OVPN_METRICS_PATH").String()
 	easyrsaDirPath           = kingpin.Flag("easyrsa.path", "path to easyrsa dir").Default("./easyrsa").Envar("EASYRSA_PATH").String()
 	indexTxtPath             = kingpin.Flag("easyrsa.index-path", "path to easyrsa index file").Default("").Envar("OVPN_INDEX_PATH").String()
 	easyrsaBinPath           = kingpin.Flag("easyrsa.bin-path", "path to easyrsa script").Default("easyrsa").Envar("EASYRSA_BIN_PATH").String()
@@ -77,89 +74,9 @@ var logFormats = map[string]log.Formatter{
 	"json": &log.JSONFormatter{},
 }
 
-var (
-	ovpnServerCertExpire = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "ovpn_server_cert_expire",
-		Help: "openvpn server certificate expire time in days",
-	},
-	)
-
-	ovpnServerCaCertExpire = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "ovpn_server_ca_cert_expire",
-		Help: "openvpn server CA certificate expire time in days",
-	},
-	)
-
-	ovpnClientsTotal = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "ovpn_clients_total",
-		Help: "total openvpn users",
-	},
-	)
-
-	ovpnClientsRevoked = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "ovpn_clients_revoked",
-		Help: "revoked openvpn users",
-	},
-	)
-
-	ovpnClientsExpired = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "ovpn_clients_expired",
-		Help: "expired openvpn users",
-	},
-	)
-
-	ovpnClientsConnected = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "ovpn_clients_connected",
-		Help: "total connected openvpn clients",
-	},
-	)
-
-	ovpnUniqClientsConnected = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "ovpn_uniq_clients_connected",
-		Help: "uniq connected openvpn clients",
-	},
-	)
-
-	ovpnClientCertificateExpire = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "ovpn_client_cert_expire",
-		Help: "openvpn user certificate expire time in days",
-	},
-		[]string{"client"},
-	)
-
-	ovpnClientConnectionInfo = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "ovpn_client_connection_info",
-		Help: "openvpn user connection info. ip - assigned address from ovpn network. value - last time when connection was refreshed in unix format",
-	},
-		[]string{"client", "ip"},
-	)
-
-	ovpnClientConnectionFrom = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "ovpn_client_connection_from",
-		Help: "openvpn user connection info. ip - from which address connection was initialized. value - time when connection was initialized in unix format",
-	},
-		[]string{"client", "ip"},
-	)
-
-	ovpnClientBytesReceived = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "ovpn_client_bytes_received",
-		Help: "openvpn user bytes received",
-	},
-		[]string{"client"},
-	)
-
-	ovpnClientBytesSent = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "ovpn_client_bytes_sent",
-		Help: "openvpn user bytes sent",
-	},
-		[]string{"client"},
-	)
-)
-
 type OvpnAdmin struct {
 	clients              []OpenvpnClient
 	activeClients        []clientStatus
-	promRegistry         *prometheus.Registry
 	mgmtInterfaces       map[string]string
 	modules              []string
 	mgmtStatusTimeFormat string
@@ -374,7 +291,6 @@ func main() {
 
 	ovpnAdmin := new(OvpnAdmin)
 
-	ovpnAdmin.promRegistry = prometheus.NewRegistry()
 	ovpnAdmin.modules = []string{}
 	ovpnAdmin.createUserMutex = &sync.Mutex{}
 	ovpnAdmin.mgmtInterfaces = make(map[string]string)
@@ -388,7 +304,6 @@ func main() {
 
 	ovpnAdmin.stat = newStatStore(*statDbPath)
 
-	ovpnAdmin.registerMetrics()
 	ovpnAdmin.setState()
 
 	go ovpnAdmin.updateState()
@@ -418,7 +333,6 @@ func main() {
 	http.HandleFunc(*listenBaseUrl+"api/user/ccd", ovpnAdmin.userShowCcdHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/ccd/apply", ovpnAdmin.userApplyCcdHandler)
 
-	http.Handle(*metricsPath, promhttp.HandlerFor(ovpnAdmin.promRegistry, promhttp.HandlerOpts{}))
 	http.HandleFunc(*listenBaseUrl+"ping", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "pong")
 	})
@@ -434,39 +348,15 @@ func CacheControlWrapper(h http.Handler) http.Handler {
 	})
 }
 
-func (oAdmin *OvpnAdmin) registerMetrics() {
-	oAdmin.promRegistry.MustRegister(ovpnServerCertExpire)
-	oAdmin.promRegistry.MustRegister(ovpnServerCaCertExpire)
-	oAdmin.promRegistry.MustRegister(ovpnClientsTotal)
-	oAdmin.promRegistry.MustRegister(ovpnClientsRevoked)
-	oAdmin.promRegistry.MustRegister(ovpnClientsConnected)
-	oAdmin.promRegistry.MustRegister(ovpnUniqClientsConnected)
-	oAdmin.promRegistry.MustRegister(ovpnClientsExpired)
-	oAdmin.promRegistry.MustRegister(ovpnClientCertificateExpire)
-	oAdmin.promRegistry.MustRegister(ovpnClientConnectionInfo)
-	oAdmin.promRegistry.MustRegister(ovpnClientConnectionFrom)
-	oAdmin.promRegistry.MustRegister(ovpnClientBytesReceived)
-	oAdmin.promRegistry.MustRegister(ovpnClientBytesSent)
-	oAdmin.promRegistry.MustRegister(ovpnClientTrafficReceivedTotal)
-	oAdmin.promRegistry.MustRegister(ovpnClientTrafficSentTotal)
-}
-
 func (oAdmin *OvpnAdmin) setState() {
 	oAdmin.activeClients = oAdmin.mgmtGetActiveClients()
 	oAdmin.stat.record(oAdmin.activeClients)
 	oAdmin.clients = oAdmin.usersList()
-
-	ovpnServerCaCertExpire.Set(float64((getOvpnCaCertExpireDate().Unix() - time.Now().Unix()) / 3600 / 24))
 }
 
 func (oAdmin *OvpnAdmin) updateState() {
 	for {
 		time.Sleep(time.Duration(28) * time.Second)
-		ovpnClientBytesSent.Reset()
-		ovpnClientBytesReceived.Reset()
-		ovpnClientConnectionFrom.Reset()
-		ovpnClientConnectionInfo.Reset()
-		ovpnClientCertificateExpire.Reset()
 		go oAdmin.setState()
 	}
 }
@@ -707,8 +597,6 @@ func (oAdmin *OvpnAdmin) usersList() []OpenvpnClient {
 	validCerts := 0
 	revokedCerts := 0
 	expiredCerts := 0
-	connectedUniqUsers := 0
-	totalActiveConnections := 0
 	apochNow := time.Now().Unix()
 
 	for _, line := range indexTxtParser(fRead(*indexTxtPath)) {
@@ -728,8 +616,6 @@ func (oAdmin *OvpnAdmin) usersList() []OpenvpnClient {
 				expiredCerts += 1
 			}
 
-			ovpnClientCertificateExpire.WithLabelValues(line.Identity).Set(float64((parseDateToUnix(indexTxtDateLayout, line.ExpirationDate) - apochNow) / 3600 / 24))
-
 			if (parseDateToUnix(indexTxtDateLayout, line.ExpirationDate) - apochNow) < 0 {
 				if ovpnClient.AccountStatus != "Revoked" {
 					ovpnClient.AccountStatus = "Expired"
@@ -743,29 +629,17 @@ func (oAdmin *OvpnAdmin) usersList() []OpenvpnClient {
 				ovpnClient.ConnectionStatus = "Connected"
 				for range userConnectedTo {
 					ovpnClient.Connections += 1
-					totalActiveConnections += 1
 				}
-				connectedUniqUsers += 1
 			}
 
 			users = append(users, ovpnClient)
-
-		} else {
-			ovpnServerCertExpire.Set(float64((parseDateToUnix(indexTxtDateLayout, line.ExpirationDate) - apochNow) / 3600 / 24))
 		}
 	}
 
 	otherCerts := totalCerts - validCerts - revokedCerts - expiredCerts
-
 	if otherCerts != 0 {
 		log.Warnf("there are %d otherCerts", otherCerts)
 	}
-
-	ovpnClientsTotal.Set(float64(totalCerts))
-	ovpnClientsRevoked.Set(float64(revokedCerts))
-	ovpnClientsExpired.Set(float64(expiredCerts))
-	ovpnClientsConnected.Set(float64(totalActiveConnections))
-	ovpnUniqClientsConnected.Set(float64(connectedUniqUsers))
 
 	return users
 }
@@ -1029,11 +903,6 @@ func (oAdmin *OvpnAdmin) mgmtConnectedUsersParser(text, serverName string) []cli
 
 			userStatus := clientStatus{CommonName: userName, RealAddress: userAddress, BytesReceived: userBytesReceived, BytesSent: userBytesSent, ConnectedSince: userConnectedSince, ConnectedTo: serverName}
 			u = append(u, userStatus)
-			bytesSent, _ := strconv.Atoi(userBytesSent)
-			bytesReceive, _ := strconv.Atoi(userBytesReceived)
-			ovpnClientConnectionFrom.WithLabelValues(userName, userAddress).Set(float64(parseDateToUnix(oAdmin.mgmtStatusTimeFormat, userConnectedSince)))
-			ovpnClientBytesSent.WithLabelValues(userName).Set(float64(bytesSent))
-			ovpnClientBytesReceived.WithLabelValues(userName).Set(float64(bytesReceive))
 		}
 		if isRouteTable {
 			user := strings.Split(txt, ",")
@@ -1041,7 +910,6 @@ func (oAdmin *OvpnAdmin) mgmtConnectedUsersParser(text, serverName string) []cli
 				if u[i].CommonName == user[1] {
 					u[i].VirtualAddress = user[0]
 					u[i].LastRef = user[3]
-					ovpnClientConnectionInfo.WithLabelValues(user[1], user[0]).Set(float64(parseDateToUnix(oAdmin.mgmtStatusTimeFormat, user[3])))
 					break
 				}
 			}
