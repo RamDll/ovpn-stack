@@ -19,14 +19,11 @@ export const ovpn = {
 
   lastSuccessfulSync: () => apiGet<string>('api/sync/last/successful'),
 
-  createUser: (username: string, password: string, expireDays = 0) =>
-    apiForm('api/user/create', { username, password, expire: String(expireDays) }),
+  createUser: (username: string, expireDays = 0) =>
+    apiForm('api/user/create', { username, expire: String(expireDays) }),
 
-  changePassword: (username: string, password: string) =>
-    apiForm('api/user/change-password', { username, password }),
-
-  rotateUser: (username: string, password: string, expireDays = 0) =>
-    apiForm('api/user/rotate', { username, password, expire: String(expireDays) }),
+  rotateUser: (username: string, expireDays = 0) =>
+    apiForm('api/user/rotate', { username, expire: String(expireDays) }),
 
   deleteUser: (username: string) => apiForm('api/user/delete', { username }),
 

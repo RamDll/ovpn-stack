@@ -21,7 +21,6 @@ services:
     environment:
       OVPN_SERVER_NET: "10.0.0.0"
       OVPN_SERVER_MASK: "255.255.255.0"
-      OVPN_PASSWD_AUTH: "false"
     cap_add:
       - NET_ADMIN
     sysctls:
@@ -66,8 +65,6 @@ services:
       EASYRSA_PATH: "/mnt/easyrsa"
       OVPN_SERVER: "${VPS_PUBLIC_IP}:7777:udp"
       OVPN_INDEX_PATH: "/mnt/easyrsa/pki/index.txt"
-      OVPN_AUTH: "false"
-      OVPN_AUTH_DB_PATH: "/mnt/easyrsa/pki/users.db"
       OVPN_STAT_DB: "/mnt/stat/traffic.db"
       OVPN_SERVER_NAME: "${OVPN_SERVER_NAME:-}"
       LOG_LEVEL: "debug"

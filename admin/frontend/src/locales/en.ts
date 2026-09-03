@@ -84,7 +84,6 @@ export default {
   actions: {
     config: 'Config',
     routes: 'Routes',
-    password: 'Password',
     disconnect: 'Disconnect',
     revoke: 'Revoke',
     unrevoke: 'Unrevoke',
@@ -97,19 +96,14 @@ export default {
     name: 'Common name',
     nameHint: "a-z A-Z 0-9 . _ - {'@'}",
     nameError: "Name: only a-z A-Z 0-9 . _ - {'@'}",
-    password: 'Password',
     expire: 'Certificate validity, days',
     expireHint: 'default 825, max 3650',
     submit: 'Create & issue certificate',
     submitting: 'Creating…',
   },
   password: {
-    changeTitle: 'Change password',
     rotateTitle: 'Rotate certificate',
     rotateNote: 'The current certificate is revoked and a new one issued. The client needs a fresh .ovpn.',
-    newPassword: 'New password',
-    minLen: 'At least 6 characters',
-    changeSubmit: 'Change password',
     rotateSubmit: 'Rotate',
   },
   confirm: {
@@ -157,7 +151,6 @@ export default {
   },
   toast: {
     userCreated: 'User {name} created',
-    passwordChanged: 'Password for {name} changed',
     certRotated: 'Certificates for {name} rotated',
     userDeleted: 'User {name} deleted',
     userRevoked: 'User {name} revoked',

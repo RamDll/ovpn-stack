@@ -20,7 +20,6 @@ import (
 	"sync"
 	"text/template"
 	"time"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -39,7 +38,6 @@ var templateFiles embed.FS
 
 const (
 	usernameRegexp       = `^([a-zA-Z0-9_.\-@])+$`
-	passwordMinLength    = 6
 	certsArchiveFileName = "certs.tar.gz"
 	ccdArchiveFileName   = "ccd.tar.gz"
 	indexTxtDateLayout   = "060102150405Z"
@@ -69,9 +67,6 @@ var (
 	ccdDir                   = kingpin.Flag("ccd.path", "path to client-config-dir").Default("./ccd").Envar("OVPN_CCD_PATH").String()
 	clientConfigTemplatePath = kingpin.Flag("templates.clientconfig-path", "path to custom client.conf.tpl").Default("").Envar("OVPN_TEMPLATES_CC_PATH").String()
 	ccdTemplatePath          = kingpin.Flag("templates.ccd-path", "path to custom ccd.tpl").Default("").Envar("OVPN_TEMPLATES_CCD_PATH").String()
-	authByPassword           = kingpin.Flag("auth.password", "enable additional password authentication").Default("false").Envar("OVPN_AUTH").Bool()
-	authDatabase             = kingpin.Flag("auth.db", "database path for password authentication").Default("./easyrsa/pki/users.db").Envar("OVPN_AUTH_DB_PATH").String()
-	authDataBaseInit         = kingpin.Flag("auth.db-init", "enable database initialization if db user not exists or size is 0").Default("false").Envar("OVPN_AUTH_DB_INIT").Bool()
 	logLevel                 = kingpin.Flag("log.level", "set log level: trace, debug, info, warn, error (default info)").Default("info").Envar("LOG_LEVEL").String()
 	logFormat                = kingpin.Flag("log.format", "set log format: text, json (default text)").Default("text").Envar("LOG_FORMAT").String()
 	statDbPath               = kingpin.Flag("statistic.db", "path to the monthly traffic statistic database (empty to disable persistence)").Default("./data/traffic.db").Envar("OVPN_STAT_DB").String()
@@ -197,12 +192,11 @@ type OpenvpnServer struct {
 }
 
 type openvpnClientConfig struct {
-	Hosts      []OpenvpnServer
-	CA         string
-	Cert       string
-	Key        string
-	TLS        string
-	PasswdAuth bool
+	Hosts []OpenvpnServer
+	CA    string
+	Cert  string
+	Key   string
+	TLS   string
 }
 
 type OpenvpnClient struct {
@@ -272,7 +266,7 @@ func (oAdmin *OvpnAdmin) userCreateHandler(w http.ResponseWriter, r *http.Reques
 	}
 	_ = r.ParseForm()
 	expireDays, _ := strconv.Atoi(r.FormValue("expire"))
-	userCreated, userCreateStatus := oAdmin.userCreate(r.FormValue("username"), r.FormValue("password"), expireDays)
+	userCreated, userCreateStatus := oAdmin.userCreate(r.FormValue("username"), expireDays)
 
 	if userCreated {
 		oAdmin.clients = oAdmin.usersList()
@@ -291,7 +285,7 @@ func (oAdmin *OvpnAdmin) userRotateHandler(w http.ResponseWriter, r *http.Reques
 	}
 	_ = r.ParseForm()
 	expireDays, _ := strconv.Atoi(r.FormValue("expire"))
-	err, msg := oAdmin.userRotate(r.FormValue("username"), r.FormValue("password"), expireDays)
+	err, msg := oAdmin.userRotate(r.FormValue("username"), expireDays)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	} else {
@@ -346,25 +340,6 @@ func (oAdmin *OvpnAdmin) userUnrevokeHandler(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, msg)
 	}
-}
-
-func (oAdmin *OvpnAdmin) userChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
-	log.Info(r.RemoteAddr, " ", r.RequestURI)
-	_ = r.ParseForm()
-	if *authByPassword {
-		err, msg := oAdmin.userChangePassword(r.FormValue("username"), r.FormValue("password"))
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, `{"status":"error", "message": "%s"}`, msg)
-
-		} else {
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, `{"status":"ok", "message": "%s"}`, msg)
-		}
-	} else {
-		http.Error(w, `{"status":"error"}`, http.StatusNotImplemented)
-	}
-
 }
 
 func (oAdmin *OvpnAdmin) userShowConfigHandler(w http.ResponseWriter, r *http.Request) {
@@ -487,10 +462,6 @@ func main() {
 		*indexTxtPath = *easyrsaDirPath + "/pki/index.txt"
 	}
 
-	if *authDataBaseInit {
-		ovpnUserInitDb()
-	}
-
 	ovpnAdmin := new(OvpnAdmin)
 
 	ovpnAdmin.lastSyncTime = "unknown"
@@ -524,10 +495,6 @@ func main() {
 
 	ovpnAdmin.modules = append(ovpnAdmin.modules, "core")
 
-	if *authByPassword {
-		ovpnAdmin.modules = append(ovpnAdmin.modules, "passwdAuth")
-	}
-
 	if *ccdEnabled {
 		ovpnAdmin.modules = append(ovpnAdmin.modules, "ccd")
 	}
@@ -545,7 +512,6 @@ func main() {
 	http.HandleFunc(*listenBaseUrl+"api/server/stats", ovpnAdmin.systemStatsHandler)
 	http.HandleFunc(*listenBaseUrl+"api/users/list", ovpnAdmin.userListHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/create", ovpnAdmin.userCreateHandler)
-	http.HandleFunc(*listenBaseUrl+"api/user/change-password", ovpnAdmin.userChangePasswordHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/rotate", ovpnAdmin.userRotateHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/delete", ovpnAdmin.userDeleteHandler)
 	http.HandleFunc(*listenBaseUrl+"api/user/revoke", ovpnAdmin.userRevokeHandler)
@@ -677,8 +643,6 @@ func (oAdmin *OvpnAdmin) renderClientConfig(username string) string {
 		conf.TLS = fRead(*easyrsaDirPath + "/pki/ta.key")
 		conf.Cert = fRead(*easyrsaDirPath + "/pki/issued/" + username + ".crt")
 		conf.Key = fRead(*easyrsaDirPath + "/pki/private/" + username + ".key")
-
-		conf.PasswdAuth = *authByPassword
 
 		t := oAdmin.getClientConfigTemplate()
 
@@ -837,14 +801,6 @@ func validateUsername(username string) error {
 	}
 }
 
-func validatePassword(password string) error {
-	if utf8.RuneCountInString(password) < passwordMinLength {
-		return errors.New(fmt.Sprintf("Password too short, password length must be greater or equal %d", passwordMinLength))
-	} else {
-		return nil
-	}
-}
-
 func checkUserExist(username string) bool {
 	for _, u := range indexTxtParser(fRead(*indexTxtPath)) {
 		if u.DistinguishedName == ("/CN=" + username) {
@@ -926,7 +882,7 @@ func (oAdmin *OvpnAdmin) usersList() []OpenvpnClient {
 
 // certExpireDays определяет срок действия клиентского сертификата в днях.
 // 0 (или значение вне диапазона 1..3650) — использовать дефолт easyrsa.
-func (oAdmin *OvpnAdmin) userCreate(username, password string, certExpireDays int) (bool, string) {
+func (oAdmin *OvpnAdmin) userCreate(username string, certExpireDays int) (bool, string) {
 	ucErr := fmt.Sprintf("User \"%s\" created", username)
 
 	oAdmin.createUserMutex.Lock()
@@ -943,13 +899,6 @@ func (oAdmin *OvpnAdmin) userCreate(username, password string, certExpireDays in
 		return false, err.Error()
 	}
 
-	if *authByPassword {
-		if err := validatePassword(password); err != nil {
-			log.Debugf("userCreate: authByPassword(): %s", err.Error())
-			return false, err.Error()
-		}
-	}
-
 	expireEnv := ""
 	if certExpireDays >= 1 && certExpireDays <= 3650 {
 		expireEnv = fmt.Sprintf("EASYRSA_CERT_EXPIRE=%d ", certExpireDays)
@@ -957,43 +906,9 @@ func (oAdmin *OvpnAdmin) userCreate(username, password string, certExpireDays in
 	o := runBash(fmt.Sprintf("cd %s && %s%s --batch build-client-full %s nopass 1>/dev/null", *easyrsaDirPath, expireEnv, *easyrsaBinPath, username))
 	log.Debug(o)
 
-	if *authByPassword {
-		o := runBash(fmt.Sprintf("openvpn-user create --db.path %s --user %s --password %s", *authDatabase, username, password))
-		log.Debug(o)
-	}
-
 	log.Infof("Certificate for user %s issued", username)
 
-	//oAdmin.clients = oAdmin.usersList()
-
 	return true, ucErr
-}
-
-func (oAdmin *OvpnAdmin) userChangePassword(username, password string) (error, string) {
-
-	if checkUserExist(username) {
-		o := runBash(fmt.Sprintf("openvpn-user check --db.path %[1]s --user %[2]s | grep %[2]s | wc -l", *authDatabase, username))
-		log.Debug(o)
-
-		if err := validatePassword(password); err != nil {
-			log.Warningf("userChangePassword: %s", err.Error())
-			return err, err.Error()
-		}
-
-		if strings.TrimSpace(o) == "0" {
-			o = runBash(fmt.Sprintf("openvpn-user create --db.path %s --user %s --password %s", *authDatabase, username, password))
-			log.Debug(o)
-		}
-
-		o = runBash(fmt.Sprintf("openvpn-user change-password --db.path %s --user %s --password %s", *authDatabase, username, password))
-		log.Debug(o)
-
-		log.Infof("Password for user %s was changed", username)
-
-		return nil, "Password changed"
-	}
-
-	return errors.New(fmt.Sprintf("User \"%s\" not found}", username)), fmt.Sprintf("{\"msg\":\"User \"%s\" not found\"}", username)
 }
 
 func (oAdmin *OvpnAdmin) getUserStatistic(username string) []clientStatus {
@@ -1012,11 +927,6 @@ func (oAdmin *OvpnAdmin) userRevoke(username string) (error, string) {
 		// check certificate valid flag 'V'
 		o := runBash(fmt.Sprintf("cd %[1]s && echo yes | %[2]s revoke %[3]s 1>/dev/null && %[2]s gen-crl 1>/dev/null", *easyrsaDirPath, *easyrsaBinPath, username))
 		log.Debugln(o)
-
-		if *authByPassword {
-			o := runBash(fmt.Sprintf("openvpn-user revoke --db.path %s --user %s", *authDatabase, username))
-			log.Debug(o)
-		}
 
 		crlFix()
 		userConnected, userConnectedTo := isUserConnected(username, oAdmin.activeClients)
@@ -1070,11 +980,6 @@ func (oAdmin *OvpnAdmin) userUnrevoke(username string) (error, string) {
 
 						_ = runBash(fmt.Sprintf("cd %s && %s gen-crl 1>/dev/null", *easyrsaDirPath, *easyrsaBinPath))
 
-						if *authByPassword {
-							o := runBash(fmt.Sprintf("openvpn-user restore --db.path %s --user %s", *authDatabase, username))
-							log.Debug(o)
-						}
-
 						crlFix()
 
 						break
@@ -1094,7 +999,7 @@ func (oAdmin *OvpnAdmin) userUnrevoke(username string) (error, string) {
 	return errors.New(fmt.Sprintf("user \"%s\" not found", username)), fmt.Sprintf("{\"msg\":\"User \"%s\" not found\"}", username)
 }
 
-func (oAdmin *OvpnAdmin) userRotate(username, newPassword string, certExpireDays int) (error, string) {
+func (oAdmin *OvpnAdmin) userRotate(username string, certExpireDays int) (error, string) {
 	if checkUserExist(username) {
 		{
 			var oldUserIndex, newUserIndex int
@@ -1116,12 +1021,7 @@ func (oAdmin *OvpnAdmin) userRotate(username, newPassword string, certExpireDays
 				log.Error(err)
 			}
 
-			if *authByPassword {
-				o := runBash(fmt.Sprintf("openvpn-user delete --force --db.path %s --user %s", *authDatabase, username))
-				log.Debug(o)
-			}
-
-			userCreated, userCreateMessage := oAdmin.userCreate(username, newPassword, certExpireDays)
+			userCreated, userCreateMessage := oAdmin.userCreate(username, certExpireDays)
 			if !userCreated {
 				usersFromIndexTxt = indexTxtParser(fRead(*indexTxtPath))
 				for i := range usersFromIndexTxt {
@@ -1172,9 +1072,6 @@ func (oAdmin *OvpnAdmin) userDelete(username string) (error, string) {
 					usersFromIndexTxt[i].DistinguishedName = "/CN=REVOKED-" + username + "-" + uniqHash
 					break
 				}
-			}
-			if *authByPassword {
-				_ = runBash(fmt.Sprintf("openvpn-user delete --force --db.path %s --user %s", *authDatabase, username))
 			}
 			err := fWrite(*indexTxtPath, renderIndexTxt(usersFromIndexTxt))
 			if err != nil {
@@ -1443,13 +1340,6 @@ func unArchiveCcd() {
 	err := extractFromArchive(ccdArchivePath, *ccdDir)
 	if err != nil {
 		log.Warnf("unArchiveCcd: extractFromArchive() %s", err)
-	}
-}
-
-func ovpnUserInitDb() {
-	if fi, err := os.Stat(*authDatabase); errors.Is(err, os.ErrNotExist) || fi.Size() == 0 {
-		i := runBash(fmt.Sprintf("openvpn-user --db.path %[1]s db-init && openvpn-user --db.path %[1]s db-migrate", *authDatabase))
-		log.Debug(i)
 	}
 }
 

@@ -3,7 +3,6 @@ import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ModalShell from '../ModalShell.vue'
 import { useUserActions } from '@/composables/useUserActions'
-import { useServerSettings } from '@/composables/useServerSettings'
 import { ApiError } from '@/api/client'
 
 const props = defineProps<{ open: boolean }>()
@@ -11,12 +10,10 @@ const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const { t } = useI18n()
 const { create } = useUserActions()
-const { hasModule } = useServerSettings()
 
 const EXPIRE_DEFAULT = 825
 
 const name = ref('')
-const password = ref('')
 const expireDays = ref(EXPIRE_DEFAULT)
 const busy = ref(false)
 const error = ref('')
@@ -28,7 +25,6 @@ watch(
   (o) => {
     if (o) {
       name.value = ''
-      password.value = ''
       expireDays.value = EXPIRE_DEFAULT
       error.value = ''
       busy.value = false
@@ -46,7 +42,7 @@ async function submit() {
   const days = Math.min(3650, Math.max(1, Math.round(expireDays.value || EXPIRE_DEFAULT)))
   busy.value = true
   try {
-    await create(name.value, password.value || 'nopass', days)
+    await create(name.value, days)
     emit('update:open', false)
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : String(e)
@@ -63,10 +59,6 @@ async function submit() {
         <label for="au-name">{{ t('addUser.name') }}</label>
         <input id="au-name" v-model="name" class="input" type="text" autocomplete="off" spellcheck="false" autofocus />
         <span class="hint">{{ t('addUser.nameHint') }}</span>
-      </div>
-      <div v-if="hasModule('passwdAuth')" class="field">
-        <label for="au-pass">{{ t('addUser.password') }}</label>
-        <input id="au-pass" v-model="password" class="input" type="password" minlength="6" autocomplete="new-password" />
       </div>
       <div class="field">
         <label for="au-expire">{{ t('addUser.expire') }}</label>

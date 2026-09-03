@@ -84,7 +84,6 @@ export default {
   actions: {
     config: 'Конфиг',
     routes: 'Маршруты',
-    password: 'Пароль',
     disconnect: 'Отключить',
     revoke: 'Отозвать',
     unrevoke: 'Восстановить',
@@ -97,19 +96,14 @@ export default {
     name: 'Common name',
     nameHint: "a-z A-Z 0-9 . _ - {'@'}",
     nameError: "Имя: только a-z A-Z 0-9 . _ - {'@'}",
-    password: 'Пароль',
     expire: 'Срок действия сертификата, дней',
     expireHint: 'по умолчанию 825, максимум 3650',
     submit: 'Создать и выпустить сертификат',
     submitting: 'Создаём…',
   },
   password: {
-    changeTitle: 'Смена пароля',
     rotateTitle: 'Перевыпуск сертификата',
     rotateNote: 'Текущий сертификат будет отозван и выпущен новый. Клиенту нужен новый .ovpn.',
-    newPassword: 'Новый пароль',
-    minLen: 'Минимум 6 символов',
-    changeSubmit: 'Сменить пароль',
     rotateSubmit: 'Перевыпустить',
   },
   confirm: {
@@ -157,7 +151,6 @@ export default {
   },
   toast: {
     userCreated: 'Пользователь {name} создан',
-    passwordChanged: 'Пароль {name} изменён',
     certRotated: 'Сертификаты {name} перевыпущены',
     userDeleted: 'Пользователь {name} удалён',
     userRevoked: 'Пользователь {name} отозван',
