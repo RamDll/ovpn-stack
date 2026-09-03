@@ -22,6 +22,10 @@ updates:
     groups:
       npm-all:
         patterns: ["*"]
+    ignore:
+      # TypeScript 7 (нативный порт) ломает vue-tsc@3 — держим ^6 до его поддержки
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # Базовые образы Dockerfile'ов (docker-compose.yaml собирает всё локально)
   - package-ecosystem: "docker"
@@ -33,6 +37,10 @@ updates:
     groups:
       docker-all:
         patterns: ["*"]
+    ignore:
+      # node 22 — LTS, major-скачки в билд-стадии фронтенда не нужны
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
 
   # Экшены в .github/workflows/
   - package-ecosystem: "github-actions"
