@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"time"
@@ -38,20 +37,18 @@ func runBash(script string) string {
 }
 
 func fExist(path string) bool {
-	var _, err = os.Stat(path)
-
-	if os.IsNotExist(err) {
-		return false
-	} else if err != nil {
-		log.Fatalf("fExist: %s", err)
-		return false
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
 	}
-
-	return true
+	if !os.IsNotExist(err) {
+		log.Errorf("fExist: %s", err)
+	}
+	return false
 }
 
 func fRead(path string) string {
-	content, err := ioutil.ReadFile(path)
+	content, err := os.ReadFile(path)
 	if err != nil {
 		log.Warning(err)
 		return ""
@@ -61,17 +58,17 @@ func fRead(path string) string {
 }
 
 func fWrite(path, content string) error {
-	err := ioutil.WriteFile(path, []byte(content), 0644)
-	if err != nil {
-		log.Fatal(err)
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		log.Errorf("fWrite %s: %s", path, err)
+		return err
 	}
 	return nil
 }
 
 func fDelete(path string) error {
-	err := os.Remove(path)
-	if err != nil {
-		log.Fatal(err)
+	if err := os.Remove(path); err != nil {
+		log.Errorf("fDelete %s: %s", path, err)
+		return err
 	}
 	return nil
 }

@@ -9,7 +9,6 @@ export interface OpenvpnClient {
   ExpirationDate: string
   RevocationDate: string
   ConnectionStatus: ConnectionStatus
-  Connections: number
   /** unix-время последнего появления онлайн; 0 — не видели */
   LastSeen: number
 }
@@ -67,6 +66,4 @@ export interface ClientStatus {
   BytesSent: string
   ConnectedSince: string
   VirtualAddress: string
-  ConnectedSinceFormatted: string
-  LastRefFormatted: string
 }

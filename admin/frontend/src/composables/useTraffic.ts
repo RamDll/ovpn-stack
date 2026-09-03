@@ -37,7 +37,7 @@ async function refresh(connectedUsernames: string[]) {
             tx,
             virtualAddress: last?.VirtualAddress ?? '',
             realAddress: last?.RealAddress ?? '',
-            connectedSince: last?.ConnectedSinceFormatted || last?.ConnectedSince || '',
+            connectedSince: last?.ConnectedSince || '',
           },
         ] as const
       } catch {
