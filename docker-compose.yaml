@@ -7,6 +7,13 @@ name: ovpn-stack
 # (80/443) и UDP-порт OpenVPN (7777). Панель ovpn-admin и Grafana доступны
 # исключительно через nginx с TLS + Basic Auth.
 
+# Ротация логов Docker для всех сервисов: 3 файла по 10 МБ.
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ---------------------------------------------------------------------------
   # OpenVPN-сервер (hardened: UDP, AES-256-GCM, tls-crypt, TLS1.2+, cert-only)
@@ -17,6 +24,7 @@ services:
       dockerfile: Dockerfile.openvpn
     image: ovpn-stack/openvpn:local
     restart: unless-stopped
+    logging: *default-logging
     command: /etc/openvpn/setup/configure.sh
     environment:
       OVPN_SERVER_NET: "10.0.0.0"
@@ -52,13 +60,12 @@ services:
       network: host   # npm ci / go mod — берём host-сеть, устойчивее к DNS в buildkit
     image: ovpn-stack/ovpn-admin:local
     restart: unless-stopped
+    logging: *default-logging
     command: /app/ovpn-admin
     depends_on:
       openvpn:
         condition: service_healthy
     environment:
-      OVPN_DEBUG: "true"
-      OVPN_VERBOSE: "true"
       OVPN_NETWORK: "10.0.0.0/24"
       OVPN_CCD: "true"
       OVPN_CCD_PATH: "/mnt/ccd"
@@ -67,7 +74,7 @@ services:
       OVPN_INDEX_PATH: "/mnt/easyrsa/pki/index.txt"
       OVPN_STAT_DB: "/mnt/stat/traffic.db"
       OVPN_SERVER_NAME: "${OVPN_SERVER_NAME:-}"
-      LOG_LEVEL: "debug"
+      LOG_LEVEL: "info"
     network_mode: "service:openvpn"
     volumes:
       - ./data/easyrsa:/mnt/easyrsa
@@ -87,6 +94,7 @@ services:
   prometheus:
     image: prom/prometheus:v3.6.0
     restart: unless-stopped
+    logging: *default-logging
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
@@ -104,6 +112,7 @@ services:
   grafana:
     image: grafana/grafana:12.1.0
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       - prometheus
     environment:
@@ -124,6 +133,7 @@ services:
   node-exporter:
     image: prom/node-exporter:v1.9.1
     restart: unless-stopped
+    logging: *default-logging
     command:
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
@@ -145,6 +155,7 @@ services:
       context: ./nginx
     image: ovpn-stack/nginx:local
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       - ovpn-admin
       - grafana
