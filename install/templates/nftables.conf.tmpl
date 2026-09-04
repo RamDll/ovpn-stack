@@ -22,7 +22,7 @@ table inet filter {
 
         tcp dport @@SSH_PORT@@ accept  # SSH
 
-        tcp dport 443 accept   # Xray (3x-ui) — VLESS Reality
+@@VLESS_RULE@@
         tcp dport 80  accept   # ACME http-01
         tcp dport 8443 accept  # nginx — панели
 
