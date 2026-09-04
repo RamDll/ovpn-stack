@@ -337,10 +337,17 @@ cmd_xui_configure() {
     sleep 1
   done
 
+  # 127.0.0.1 не работает: 3x-ui сидит в network_mode: host (свой netns
+  # хоста), а nginx — в отдельной bridge-сети docker-compose. host.docker.internal
+  # у nginx резолвится в docker0-gateway (172.17.0.1), а loopback-сокет
+  # никогда не отвечает на пакеты, пришедшие на другой локальный адрес —
+  # проверено на живом сервере, соединение молча висело по таймауту.
+  # Слушаем на всех интерфейсах и защищаем на уровне nftables (INPUT
+  # разрешает $web_port только с docker-интерфейсов, не из интернета).
   docker exec "$container" /app/x-ui setting \
     -webBasePath "$base_path" \
     -port "$web_port" \
-    -listenIP "127.0.0.1" \
+    -listenIP "0.0.0.0" \
     -username "$admin_user" \
     -password "$admin_pass" >/dev/null
 

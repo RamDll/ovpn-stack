@@ -229,7 +229,11 @@ cmd_nftables_apply() {
 
   local vless_block=""
   if [[ "$mode" == "vless" || "$mode" == "all" ]]; then
-    vless_block="        tcp dport 443 accept  # Xray (3x-ui) — VLESS Reality"
+    # 3x-ui слушает 0.0.0.0:2053 (127.0.0.1 недостижим из netns nginx —
+    # см. install-vpn.sh xui-configure), поэтому в INPUT, а не только
+    # в forward: пускаем 2053 исключительно с docker-интерфейсов, наружу
+    # в интернет порт остаётся закрыт политикой drop.
+    vless_block="        tcp dport 443 accept  # Xray (3x-ui) — VLESS Reality\n        iifname \"docker0\" tcp dport 2053 accept  # 3x-ui панель — только для nginx-прокси\n        iifname \"br-*\" tcp dport 2053 accept"
   fi
 
   local ovpn_block=""
