@@ -77,6 +77,55 @@ done
 for c in ssh scp ssh-keygen ssh-keyscan awk sed mktemp openssl; do
   command -v "$c" >/dev/null 2>&1 || die "нужен '$c' в PATH — на Linux/macOS/WSL он обычно уже есть"
 done
+
+# необязательные удобства локальной машины (не сервера — принцип 5 про
+# curl|sh здесь не при чём). Ставим сами через пакетный менеджер, который
+# найдём, и только с явного согласия — это чужая машина пользователя.
+install_optional_dep() {
+  local bin="$1" pkg="$2" purpose="$3"
+  command -v "$bin" >/dev/null 2>&1 && return 0
+  [[ -t 0 ]] || { warn "'$bin' не найден ($purpose) — неинтерактивный запуск, пропускаю установку"; return 1; }
+
+  local pm=""
+  if command -v apt-get >/dev/null 2>&1; then pm="apt-get"
+  elif command -v pacman >/dev/null 2>&1; then pm="pacman"
+  elif command -v dnf >/dev/null 2>&1; then pm="dnf"
+  elif command -v brew >/dev/null 2>&1; then pm="brew"
+  fi
+  if [[ -z "$pm" ]]; then
+    warn "'$bin' не найден ($purpose), не смог определить пакетный менеджер — поставь вручную"
+    return 1
+  fi
+
+  warn "'$bin' не найден ($purpose)"
+  read -rp "  Поставить пакет '$pkg' через $pm? (нужен sudo) [y/N]: " reply
+  [[ "$reply" =~ ^[Yy]$ ]] || return 1
+
+  case "$pm" in
+    apt-get) sudo apt-get update -qq && sudo apt-get install -y "$pkg" ;;
+    pacman)  sudo pacman -Sy --noconfirm "$pkg" ;;
+    dnf)     sudo dnf install -y "$pkg" ;;
+    brew)
+      # sshpass убрали из homebrew-core (политика против автоматизации
+      # парольного SSH) — только через сторонний tap
+      if [[ "$bin" == "sshpass" ]]; then
+        brew install esolitos/ipa/sshpass
+      else
+        brew install "$pkg"
+      fi
+      ;;
+  esac
+
+  if command -v "$bin" >/dev/null 2>&1; then
+    ok "'$bin' установлен"
+  else
+    warn "установка '$pkg' не дала '$bin' в PATH — продолжаю без него"
+    return 1
+  fi
+}
+install_optional_dep sshpass sshpass "чтобы не вводить root-пароль по нескольку раз при первом подключении"
+install_optional_dep qrencode qrencode "чтобы показать QR-код VLESS-ссылки в конце"
+
 HAVE_SSHPASS=0; command -v sshpass >/dev/null 2>&1 && HAVE_SSHPASS=1
 HAVE_QRENCODE=0; command -v qrencode >/dev/null 2>&1 && HAVE_QRENCODE=1
 
