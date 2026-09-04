@@ -123,8 +123,8 @@ install_optional_dep() {
     return 1
   fi
 }
-install_optional_dep sshpass sshpass "чтобы не вводить root-пароль по нескольку раз при первом подключении"
-install_optional_dep qrencode qrencode "чтобы показать QR-код VLESS-ссылки в конце"
+install_optional_dep sshpass sshpass "чтобы не вводить root-пароль по нескольку раз при первом подключении" || true
+install_optional_dep qrencode qrencode "чтобы показать QR-код VLESS-ссылки в конце" || true
 
 HAVE_SSHPASS=0; command -v sshpass >/dev/null 2>&1 && HAVE_SSHPASS=1
 HAVE_QRENCODE=0; command -v qrencode >/dev/null 2>&1 && HAVE_QRENCODE=1
