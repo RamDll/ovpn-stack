@@ -278,7 +278,11 @@ cmd_htpasswd_generate() {
   local pass="${2:?usage: htpasswd-generate <user> <pass>}"
   mkdir -p "$RENDER_DIR/nginx"
   printf '%s:%s\n' "$user" "$(openssl passwd -apr1 "$pass")" > "$RENDER_DIR/nginx/htpasswd"
-  chmod 600 "$RENDER_DIR/nginx/htpasswd"
+  # 644, не 600: файл читает nginx внутри контейнера под своим uid,
+  # не совпадающим с хостовым — 600 дал "Permission denied" на живом
+  # сервере. Внутри только apr1-хэш, не голый пароль — ознакомительный
+  # доступ на чтение не проблема.
+  chmod 644 "$RENDER_DIR/nginx/htpasswd"
   log "htpasswd-generate готово (user=$user)"
 }
 
