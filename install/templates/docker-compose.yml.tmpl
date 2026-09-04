@@ -101,8 +101,9 @@ services:
     container_name: ovpn-stack-nginx
     restart: unless-stopped
     logging: *default-logging
-    # 3x-ui (network_mode: host) слушает панель на 127.0.0.1 хоста — из
-    # bridge-сети контейнера это не 127.0.0.1 самого nginx, а host-gateway.
+    # 3x-ui (network_mode: host) слушает панель на 0.0.0.0 хоста — из
+    # bridge-сети контейнера её не достать через 127.0.0.1, только через
+    # host-gateway; доступ снаружи всё равно закрыт nftables (см. install/README.md).
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -113,6 +114,7 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl:ro
       - ./nginx/acme:/var/www/acme:ro
       - ./nginx/html:/usr/share/nginx/html:ro
+      - ./nginx/htpasswd:/etc/nginx/htpasswd:ro
     networks:
       - ovpn-stack-vpn
     healthcheck:

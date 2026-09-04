@@ -269,6 +269,19 @@ cmd_cert_switch_to_webroot() {
   log "cert-switch-to-webroot готово"
 }
 
+# htpasswd-generate <user> <pass> — nginx:alpine здесь без своего Dockerfile
+# (в отличие от старого деплоя с apache2-utils в образе), поэтому хэш
+# считаем сами через openssl (apr1 — совместимый с nginx auth_basic_user_file
+# формат, проверено на живом сервере: 401 без пароля, 200 с верным).
+cmd_htpasswd_generate() {
+  local user="${1:?usage: htpasswd-generate <user> <pass>}"
+  local pass="${2:?usage: htpasswd-generate <user> <pass>}"
+  mkdir -p "$RENDER_DIR/nginx"
+  printf '%s:%s\n' "$user" "$(openssl passwd -apr1 "$pass")" > "$RENDER_DIR/nginx/htpasswd"
+  chmod 600 "$RENDER_DIR/nginx/htpasswd"
+  log "htpasswd-generate готово (user=$user)"
+}
+
 # ---------------------------------------------------------------------------
 # nginx — рендер конфига и запуск последним
 # ---------------------------------------------------------------------------
@@ -297,6 +310,14 @@ cmd_render_nginx() {
     strip_block "$out" "# BEGIN OPENVPN" "# END OPENVPN"
   else
     keep_block_markers_only "$out" "# BEGIN OPENVPN" "# END OPENVPN"
+  fi
+
+  # docker-compose.yml всегда монтирует nginx/htpasswd (нужен только в
+  # openvpn/all-режиме, для Basic Auth перед ovpn-admin) — в vless-only
+  # его никто не сгенерирует через htpasswd-generate, а bind-mount
+  # несуществующего файла Docker молча подменяет пустой директорией.
+  if [[ ! -f "$RENDER_DIR/nginx/htpasswd" ]]; then
+    : > "$RENDER_DIR/nginx/htpasswd"
   fi
 
   if [[ ! -f "$RENDER_DIR/nginx/html/index.html" ]]; then
@@ -407,10 +428,15 @@ cmd_vless_create() {
     python3 -c 'import json,sys; print(json.load(sys.stdin)["obj"])' 2>/dev/null)
   [[ -n "$csrf_token" ]] || die "не удалось получить CSRF-токен 3x-ui"
 
-  curl -fsS -b "$cookies" -c "$cookies" -o /dev/null \
+  local login_resp
+  login_resp=$(curl -fsS -b "$cookies" -c "$cookies" \
     -H "X-CSRF-Token: ${csrf_token}" \
     -d "username=${user}" -d "password=${pass}" \
-    "${base_url}/login" || die "3x-ui login не прошёл"
+    "${base_url}/login") || die "3x-ui login не прошёл"
+  # 3x-ui отвечает HTTP 200 даже на логическую неудачу (success:false в
+  # теле) — curl -f тут ничего не поймает, надо разбирать JSON руками.
+  python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("success") else 1)' \
+    <<<"$login_resp" || die "3x-ui login отклонён: $login_resp"
 
   local existing
   existing=$(curl -fsS -b "$cookies" "${base_url}/panel/api/inbounds/list" || echo '{}')
@@ -433,10 +459,15 @@ cmd_vless_create() {
 
   local uuid; uuid=$(cat /proc/sys/kernel/random/uuid)
   local short_id; short_id=$(openssl rand -hex 4)
+  # email клиента должен быть уникален в рамках панели (3x-ui отклоняет
+  # повтор с "Duplicate email" — HTTP 200, success:false, curl -f это не
+  # ловит). Статичный "client1" убивал каждый повторный прогон после
+  # первого — берём кусок uuid, гарантированно новый на каждый вызов.
+  local client_email="client-${uuid:0:8}"
 
   local settings streamSettings sniffing
   settings=$(cat <<JSON
-{"clients":[{"id":"${uuid}","flow":"xtls-rprx-vision","email":"client1"}],"decryption":"none"}
+{"clients":[{"id":"${uuid}","flow":"xtls-rprx-vision","email":"${client_email}"}],"decryption":"none"}
 JSON
 )
   streamSettings=$(cat <<JSON
@@ -455,11 +486,17 @@ JSON
 JSON
 )
 
-  curl -fsS -b "$cookies" -o /dev/null \
+  local add_resp
+  add_resp=$(curl -fsS -b "$cookies" \
     -H 'Content-Type: application/json' \
     -H "X-CSRF-Token: ${csrf_token}" \
     -d "$payload" \
-    "${base_url}/panel/api/inbounds/add" || die "создание инбаунда не прошло"
+    "${base_url}/panel/api/inbounds/add") || die "создание инбаунда не прошло"
+  # Опять же: логическая ошибка (напр. "Duplicate email") приходит как
+  # HTTP 200 + success:false — обнаружено вживую на этом самом сервере,
+  # скрипт до этого молча репортовал успех при фактически пустой панели.
+  python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("success") else 1)' \
+    <<<"$add_resp" || die "создание инбаунда отклонено 3x-ui: $add_resp"
   rm -f "$cookies"
 
   log "VLESS+Reality инбаунд создан (uuid=$uuid shortId=$short_id publicKey=$pub)"
@@ -483,6 +520,7 @@ main() {
     acme-install)             cmd_acme_install "$@" ;;
     cert-issue)               cmd_cert_issue "$@" ;;
     cert-switch-to-webroot)   cmd_cert_switch_to_webroot "$@" ;;
+    htpasswd-generate)        cmd_htpasswd_generate "$@" ;;
     render-nginx)             cmd_render_nginx "$@" ;;
     compose-up)               cmd_compose_up "$@" ;;
     compose-up-service)       cmd_compose_up_service "$@" ;;
