@@ -377,7 +377,10 @@ cmd_vless_create() {
   local user="$2" pass="$3" dest="$4" server_name="$5"
   base_url="${base_url%/}"
   local cookies; cookies=$(mktemp)
-  trap 'rm -f "$cookies"' RETURN
+  # не trap ... RETURN: он не снимается сам и позже срабатывает повторно
+  # на возврате из main() — там $cookies уже вне области видимости, и
+  # под set -u это roняет весь скрипт "unbound variable" уже ПОСЛЕ того,
+  # как инбаунд успешно создан. Чистим явно в обеих точках выхода.
 
   # CSRF: любой небезопасный метод (не GET/HEAD/OPTIONS/TRACE) без сессии
   # ещё не аутентифицирован Bearer-токеном — 3x-ui требует X-CSRF-Token,
@@ -396,19 +399,23 @@ cmd_vless_create() {
   existing=$(curl -fsS -b "$cookies" "${base_url}/panel/api/inbounds/list" || echo '{}')
   if grep -q '"remark":"vless-reality"' <<<"$existing"; then
     log "инбаунд vless-reality уже существует — не создаю повторно"
+    rm -f "$cookies"
     return 0
   fi
 
   # путь к бинарю xray внутри образа 3x-ui — проверено на mhsanaei/3x-ui,
-  # при смене образа/версии может съехать, поэтому пробуем оба варианта
+  # при смене образа/версии может съехать, поэтому пробуем несколько
+  # вариантов (текущий, на момент проверки: /app/bin/xray-linux-amd64)
   local keys
-  keys=$(docker exec 3x-ui /app/xray x25519 2>/dev/null || docker exec 3x-ui xray x25519 2>/dev/null || true)
+  keys=$(docker exec 3x-ui /app/bin/xray-linux-amd64 x25519 2>/dev/null || \
+         docker exec 3x-ui /app/xray x25519 2>/dev/null || \
+         docker exec 3x-ui xray x25519 2>/dev/null || true)
   local priv; priv=$(grep -i 'Private' <<<"$keys" | awk '{print $NF}')
   local pub;  pub=$(grep -i 'Public'  <<<"$keys" | awk '{print $NF}')
   [[ -n "$priv" && -n "$pub" ]] || die "не удалось сгенерировать x25519-ключи Reality"
 
   local uuid; uuid=$(cat /proc/sys/kernel/random/uuid)
-  local short_id; short_id=$(head -c4 /dev/urandom | xxd -p)
+  local short_id; short_id=$(openssl rand -hex 4)
 
   local settings streamSettings sniffing
   settings=$(cat <<JSON
@@ -436,6 +443,7 @@ JSON
     -H "X-CSRF-Token: ${csrf_token}" \
     -d "$payload" \
     "${base_url}/panel/api/inbounds/add" || die "создание инбаунда не прошло"
+  rm -f "$cookies"
 
   log "VLESS+Reality инбаунд создан (uuid=$uuid shortId=$short_id publicKey=$pub)"
   # для сводки — единственное, что нужно домашнему ПК
