@@ -172,6 +172,16 @@ cmd_render_compose() {
 # поддержки webroot для IP, см. README раздел 8)
 # ---------------------------------------------------------------------------
 cmd_acme_install() {
+  # standalone-режим (cert-issue) поднимает свой HTTP-сервер через socat —
+  # без него acme.sh падает на "Please install socat tools first."
+  # Проверяем и ставим при каждом вызове, не только при первой установке
+  # acme.sh — иначе повторный прогон на уже настроенном сервере пропустит
+  # эту проверку через ранний return ниже.
+  if ! command -v socat >/dev/null 2>&1; then
+    log "ставлю socat (нужен acme.sh для standalone-режима)"
+    apt-get -o DPkg::Lock::Timeout=120 -y install -qq socat
+  fi
+
   if [[ -x "$ACME_BIN" ]]; then
     log "acme.sh уже установлен"
     return 0
