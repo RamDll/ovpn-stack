@@ -379,7 +379,16 @@ cmd_vless_create() {
   local cookies; cookies=$(mktemp)
   trap 'rm -f "$cookies"' RETURN
 
-  curl -fsS -c "$cookies" -o /dev/null \
+  # CSRF: любой небезопасный метод (не GET/HEAD/OPTIONS/TRACE) без сессии
+  # ещё не аутентифицирован Bearer-токеном — 3x-ui требует X-CSRF-Token,
+  # выданный отдельным публичным GET-эндпоинтом, включая сам /login.
+  local csrf_token
+  csrf_token=$(curl -fsS -c "$cookies" "${base_url}/csrf-token" | \
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["obj"])' 2>/dev/null)
+  [[ -n "$csrf_token" ]] || die "не удалось получить CSRF-токен 3x-ui"
+
+  curl -fsS -b "$cookies" -c "$cookies" -o /dev/null \
+    -H "X-CSRF-Token: ${csrf_token}" \
     -d "username=${user}" -d "password=${pass}" \
     "${base_url}/login" || die "3x-ui login не прошёл"
 
@@ -424,6 +433,7 @@ JSON
 
   curl -fsS -b "$cookies" -o /dev/null \
     -H 'Content-Type: application/json' \
+    -H "X-CSRF-Token: ${csrf_token}" \
     -d "$payload" \
     "${base_url}/panel/api/inbounds/add" || die "создание инбаунда не прошло"
 
