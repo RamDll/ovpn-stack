@@ -13,7 +13,15 @@ x-logging: &default-logging
 services:
 # BEGIN VLESS
   3x-ui:
-    image: ghcr.io/mhsanaei/3x-ui:latest
+    # запинено на v3.4.2, НЕ :latest — :latest тянет xray-core 26.7.11+,
+    # где REALITY-инбаунды стали отклонять всех клиентов новым дефолтом
+    # minClientVer (MHSanaei/3x-ui issue #5922, закрыт как "не будем
+    # чинить"). v3.4.2 подтверждённо тянет xray-core v26.6.27 (DockerInit.sh
+    # пинит его явно) — последняя версия до регрессии. Проверено вживую:
+    # с :latest REALITY-хэндшейк падал и на xray-core, и на sing-box-клиенте
+    # с одинаковыми ключами/параметрами; с v3.4.2 отпадает необходимость
+    # разбираться с minClientVer вручную.
+    image: ghcr.io/mhsanaei/3x-ui:v3.4.2
     container_name: 3x-ui
     restart: unless-stopped
     logging: *default-logging
