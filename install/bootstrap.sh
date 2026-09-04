@@ -263,6 +263,16 @@ cmd_nftables_apply() {
   log "применяю ruleset"
   nft -f "$NFTABLES_CONF" || { cmd_nftables_rollback; die "nft -f упал после успешной -c -f проверки — откатил"; }
 
+  # flush ruleset стирает и собственные NAT/MASQUERADE-правила Docker (он
+  # добавляет их сам при старте демона, не отслеживает внешние изменения
+  # firewall) — без ребута dockerd контейнеры остаются без сети до
+  # следующего его собственного запуска. Идемпотентный повторный прогон
+  # именно поэтому ловил "DNS: transient error" при сборке образов.
+  if systemctl is-active --quiet docker 2>/dev/null; then
+    log "перезапускаю docker — flush ruleset стёр его NAT-правила, dockerd сам их не восстановит"
+    systemctl restart docker
+  fi
+
   systemctl enable nftables >/dev/null 2>&1 || true
   log "nftables-apply готово (ssh_port=$ssh_port mode=$mode) — жду nftables-confirm с домашнего ПК"
 }
