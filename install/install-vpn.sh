@@ -1,0 +1,443 @@
+#!/usr/bin/env bash
+#
+# install-vpn.sh — шаги 4-6 установки (Docker, сервисы, первый VLESS-инбаунд,
+# сводка). Выполняется НА СЕРВЕРЕ, вызывается удалённо из setup.sh по одной
+# подкоманде за раз, уже по ключевой SSH-сессии от имени sudo-пользователя
+# (после того как bootstrap.sh закрыл root и старый парольный вход).
+# См. install/README.md, разделы 8-10.
+#
+# Использование:
+#   install-vpn.sh <subcommand> [args...]
+
+set -Eeuo pipefail
+
+log()  { printf '[install-vpn] %s\n' "$*" >&2; }
+die()  { printf '[install-vpn] ОШИБКА: %s\n' "$*" >&2; exit 1; }
+need_root() { [[ "$(id -u)" -eq 0 ]] || die "подкоманда '$1' требует root (запусти через sudo)"; }
+
+REPO_URL="https://github.com/RamDll/ovpn-stack.git"
+INSTALL_DIR=/opt/ovpn-stack
+RENDER_DIR="$INSTALL_DIR/install-render"
+TMPL_DIR="$INSTALL_DIR/install/templates"
+STATE_DIR="$INSTALL_DIR/state"
+ACME_HOME="$INSTALL_DIR/.acme.sh"
+ACME_BIN="$ACME_HOME/acme.sh"
+ACME_TAG="3.0.9"   # пин версии — никаких curl|sh с апстрима, только git clone на тег
+
+# ---------------------------------------------------------------------------
+# шаг 4.0 — Docker (репозиторий apt, БЕЗ convenience-скрипта get.docker.com —
+# это ровно тот `curl | sh`, который запрещён принципом 5)
+# ---------------------------------------------------------------------------
+cmd_docker_install() {
+  need_root docker-install
+  if command -v docker >/dev/null 2>&1 && docker version >/dev/null 2>&1; then
+    log "Docker уже установлен — пропускаю"
+    return 0
+  fi
+
+  log "ставлю зависимости"
+  apt-get -o DPkg::Lock::Timeout=120 -y install -qq ca-certificates curl gnupg
+
+  install -m 0755 -d /etc/apt/keyrings
+  if [[ ! -f /etc/apt/keyrings/docker.asc ]]; then
+    curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
+  fi
+
+  local codename
+  codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+  cat > /etc/apt/sources.list.d/docker.list <<EOF
+deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian ${codename} stable
+EOF
+
+  apt-get -o DPkg::Lock::Timeout=120 update -qq
+  apt-get -o DPkg::Lock::Timeout=120 -y install -qq \
+    docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+  systemctl enable --now docker
+  log "Docker установлен"
+}
+
+cmd_docker_group_add() {
+  need_root docker-group-add
+  local username="${1:?usage: docker-group-add <username>}"
+  if id -nG "$username" | tr ' ' '\n' | grep -qx docker; then
+    log "$username уже в группе docker"
+  else
+    usermod -aG docker "$username"
+    log "$username добавлен в группу docker (переподключение по SSH подхватит группу)"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# репозиторий стека — берём отсюда admin/ (openvpn + ovpn-admin) build context
+# ---------------------------------------------------------------------------
+cmd_repo_sync() {
+  local git_url="${1:-$REPO_URL}"
+  local branch="${2:-master}"
+
+  mkdir -p "$INSTALL_DIR"
+  if [[ ! -d "$INSTALL_DIR/.git" ]]; then
+    # НЕ git clone: к этому моменту в $INSTALL_DIR уже могли появиться
+    # state/ и другие наши каталоги (user-create создаёт state/ ещё в root-
+    # фазе) — git clone требует пустую директорию. init+fetch+checkout
+    # тот же результат, но переживает непустой каталог.
+    log "инициализирую git в $INSTALL_DIR ($git_url, $branch)"
+    git -C "$INSTALL_DIR" init -q
+    git -C "$INSTALL_DIR" remote add origin "$git_url"
+  fi
+  log "git fetch $branch"
+  git -C "$INSTALL_DIR" fetch --depth 1 origin "$branch"
+  git -C "$INSTALL_DIR" checkout -q -B "$branch" FETCH_HEAD
+  git -C "$INSTALL_DIR" reset --hard FETCH_HEAD
+  git -C "$INSTALL_DIR" clean -fd -e state -e data -e install-render -e .acme.sh
+  log "repo-sync готово"
+}
+
+# ---------------------------------------------------------------------------
+# каталоги для volume — создаём один раз, повторный прогон НЕ трогает
+# существующие (PKI, база 3x-ui, приватный ключ Reality)
+# ---------------------------------------------------------------------------
+cmd_dirs_init() {
+  local mode="${1:?usage: dirs-init <mode>}"
+  mkdir -p "$RENDER_DIR" "$STATE_DIR"
+  mkdir -p "$RENDER_DIR/nginx/ssl" "$RENDER_DIR/nginx/acme" "$RENDER_DIR/nginx/html"
+
+  if [[ "$mode" == "vless" || "$mode" == "all" ]]; then
+    mkdir -p "$INSTALL_DIR/data/xui"
+  fi
+  if [[ "$mode" == "openvpn" || "$mode" == "all" ]]; then
+    mkdir -p "$INSTALL_DIR/data/easyrsa" "$INSTALL_DIR/data/ccd" "$INSTALL_DIR/data/stat"
+  fi
+  log "dirs-init готово (mode=$mode) — существующие каталоги не тронуты"
+}
+
+# ---------------------------------------------------------------------------
+# рендер шаблонов (простая подстановка @@VAR@@ через sed, без envsubst —
+# он не всегда стоит на минимальном образе)
+# ---------------------------------------------------------------------------
+render_tmpl() {
+  local src="$1" dst="$2"; shift 2
+  local sed_args=()
+  local pair
+  for pair in "$@"; do
+    local key="${pair%%=*}" val="${pair#*=}"
+    val="${val//\\/\\\\}"; val="${val//\//\\/}"; val="${val//&/\\&}"
+    sed_args+=(-e "s/@@${key}@@/${val}/g")
+  done
+  sed "${sed_args[@]}" "$src" > "$dst"
+}
+
+# strip_block <file> <BEGIN marker> <END marker> — вырезает блок целиком,
+# если режим его не требует (маркеры — HTML/YAML-комментарии в шаблоне)
+strip_block() {
+  local file="$1" begin="$2" end="$3"
+  sed -i "/${begin}/,/${end}/d" "$file"
+}
+keep_block_markers_only() {
+  local file="$1" begin="$2" end="$3"
+  sed -i -e "/${begin}/d" -e "/${end}/d" "$file"
+}
+
+# render-compose <mode> <ovpn_udp_port> <public_ip>
+cmd_render_compose() {
+  local mode="${1:?usage: render-compose <mode> <ovpn_udp_port> <public_ip>}"
+  local ovpn_port="${2:-}"
+  local public_ip="${3:?public_ip required}"
+  local tmpl="$TMPL_DIR/docker-compose.yml.tmpl"
+  local out="$RENDER_DIR/docker-compose.yml"
+  [[ -f "$tmpl" ]] || die "не найден $tmpl"
+
+  render_tmpl "$tmpl" "$out" \
+    "OVPN_UDP_PORT=${ovpn_port:-1194}" \
+    "PUBLIC_IP=${public_ip}" \
+    "REPO_ROOT=${INSTALL_DIR}"
+
+  if [[ "$mode" != "vless" && "$mode" != "all" ]]; then
+    strip_block "$out" "# BEGIN VLESS" "# END VLESS"
+  else
+    keep_block_markers_only "$out" "# BEGIN VLESS" "# END VLESS"
+  fi
+  if [[ "$mode" != "openvpn" && "$mode" != "all" ]]; then
+    strip_block "$out" "# BEGIN OPENVPN" "# END OPENVPN"
+  else
+    keep_block_markers_only "$out" "# BEGIN OPENVPN" "# END OPENVPN"
+  fi
+
+  log "render-compose готово -> $out"
+}
+
+# ---------------------------------------------------------------------------
+# сертификат на голый IP — acme.sh (Certbot в Debian репах пока без
+# поддержки webroot для IP, см. README раздел 8)
+# ---------------------------------------------------------------------------
+cmd_acme_install() {
+  if [[ -x "$ACME_BIN" ]]; then
+    log "acme.sh уже установлен"
+    return 0
+  fi
+  log "ставлю acme.sh (git clone, тег $ACME_TAG — без curl|sh)"
+  local tmp; tmp=$(mktemp -d)
+  git clone --depth 1 --branch "$ACME_TAG" https://github.com/acmesh-official/acme.sh.git "$tmp"
+  ( cd "$tmp" && ./acme.sh --install --home "$ACME_HOME" --no-cron )
+  rm -rf "$tmp"
+  # свой systemd-таймер вместо cron-строки acme.sh — проверка дважды в день,
+  # renew у самого acme.sh идемпотентен (не выпускает, пока не истекает срок)
+  cat > /etc/systemd/system/ovpn-stack-acme-renew.service <<EOF
+[Unit]
+Description=ovpn-stack: acme.sh renew
+
+[Service]
+Type=oneshot
+Environment=LE_WORKING_DIR=${ACME_HOME}
+ExecStart=${ACME_BIN} --cron --home ${ACME_HOME}
+ExecStartPost=-/usr/bin/docker compose -f ${RENDER_DIR}/docker-compose.yml exec -T nginx nginx -s reload
+EOF
+  cat > /etc/systemd/system/ovpn-stack-acme-renew.timer <<'EOF'
+[Unit]
+Description=ovpn-stack: acme.sh renew twice a day (IP-сертификат живёт ~6 суток)
+
+[Timer]
+OnCalendar=*-*-* 03,15:00:00
+RandomizedDelaySec=600
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now ovpn-stack-acme-renew.timer
+  log "acme.sh + таймер продления готовы"
+}
+
+# cert-issue <ip> [email]
+cmd_cert_issue() {
+  local ip="${1:?usage: cert-issue <ip> [email]}"
+  local email="${2:-}"
+  local cert_dir="$RENDER_DIR/nginx/ssl"
+
+  if [[ -s "$cert_dir/fullchain.pem" && -s "$cert_dir/privkey.pem" ]]; then
+    log "сертификат уже есть в $cert_dir — не перевыпускаю (см. cert-renew)"
+    return 0
+  fi
+
+  log "выпускаю IP-сертификат Let's Encrypt через acme.sh (standalone, порт 80)"
+  local email_arg=()
+  [[ -n "$email" ]] && email_arg=(--accountemail "$email")
+
+  "$ACME_BIN" --home "$ACME_HOME" --issue --standalone \
+    --server letsencrypt \
+    -d "$ip" \
+    --days 3 \
+    "${email_arg[@]}"
+
+  "$ACME_BIN" --home "$ACME_HOME" --install-cert -d "$ip" \
+    --key-file       "$cert_dir/privkey.pem" \
+    --fullchain-file "$cert_dir/fullchain.pem" \
+    --reloadcmd      "docker compose -f ${RENDER_DIR}/docker-compose.yml exec -T nginx nginx -s reload || true"
+
+  log "cert-issue готово"
+}
+
+# переключить выпущенный сертификат на webroot-режим продления (nginx уже
+# держит :80 к этому моменту — standalone больше не сработает)
+cmd_cert_switch_to_webroot() {
+  local ip="${1:?usage: cert-switch-to-webroot <ip>}"
+  local webroot="$RENDER_DIR/nginx/acme"
+  "$ACME_BIN" --home "$ACME_HOME" --set-notify-hook null >/dev/null 2>&1 || true
+  # meняем challenge-alias на webroot без переиздания сертификата
+  sed -i "s#^Le_Webroot=.*#Le_Webroot='${webroot}'#" "$ACME_HOME/${ip}_ecc/${ip}.conf" 2>/dev/null || \
+    "$ACME_BIN" --home "$ACME_HOME" --issue -d "$ip" -w "$webroot" --server letsencrypt --days 3 --force
+  log "cert-switch-to-webroot готово"
+}
+
+# ---------------------------------------------------------------------------
+# nginx — рендер конфига и запуск последним
+# ---------------------------------------------------------------------------
+# render-nginx <mode> <xui_base_path> <xui_port> <ovpn_admin_path>
+cmd_render_nginx() {
+  local mode="${1:?usage: render-nginx <mode> <xui_base_path> <xui_port> <ovpn_admin_path>}"
+  local xui_path="${2:-}"
+  local xui_port="${3:-2053}"
+  local ovpn_admin_path="${4:-}"
+  local tmpl="$TMPL_DIR/nginx.conf.tmpl"
+  local out="$RENDER_DIR/nginx/conf.d/default.conf"
+  mkdir -p "$RENDER_DIR/nginx/conf.d"
+  [[ -f "$tmpl" ]] || die "не найден $tmpl"
+
+  render_tmpl "$tmpl" "$out" \
+    "XUI_BASE_PATH=${xui_path}" \
+    "XUI_PORT=${xui_port}" \
+    "OVPN_ADMIN_PATH=${ovpn_admin_path}"
+
+  if [[ "$mode" != "vless" && "$mode" != "all" ]]; then
+    strip_block "$out" "# BEGIN VLESS" "# END VLESS"
+  else
+    keep_block_markers_only "$out" "# BEGIN VLESS" "# END VLESS"
+  fi
+  if [[ "$mode" != "openvpn" && "$mode" != "all" ]]; then
+    strip_block "$out" "# BEGIN OPENVPN" "# END OPENVPN"
+  else
+    keep_block_markers_only "$out" "# BEGIN OPENVPN" "# END OPENVPN"
+  fi
+
+  if [[ ! -f "$RENDER_DIR/nginx/html/index.html" ]]; then
+    cat > "$RENDER_DIR/nginx/html/index.html" <<'EOF'
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>It works</title></head>
+<body><p>It works.</p></body></html>
+EOF
+  fi
+
+  log "render-nginx готово -> $out"
+}
+
+# ---------------------------------------------------------------------------
+# compose up
+# ---------------------------------------------------------------------------
+cmd_compose_up() {
+  local svc="${1:-}"
+  ( cd "$RENDER_DIR" && docker compose -f docker-compose.yml up -d --build ${svc:+"$svc"} )
+  log "compose-up готово"
+}
+
+cmd_compose_up_service() {
+  local svc="${1:?usage: compose-up-service <service>}"
+  ( cd "$RENDER_DIR" && docker compose -f docker-compose.yml up -d --build "$svc" )
+}
+
+# ---------------------------------------------------------------------------
+# 3x-ui: базовая настройка (webBasePath/webPort/логин) через встроенный CLI
+# ---------------------------------------------------------------------------
+# xui-configure <container_name> <base_path> <admin_user> <admin_pass> [web_port]
+cmd_xui_configure() {
+  local container="${1:?usage: xui-configure <container> <base_path> <admin_user> <admin_pass> [web_port]}"
+  local base_path="$2" admin_user="$3" admin_pass="$4" web_port="${5:-2053}"
+
+  for _ in $(seq 1 30); do
+    docker exec "$container" true >/dev/null 2>&1 && break
+    sleep 1
+  done
+
+  docker exec "$container" /app/x-ui setting \
+    -webBasePath "$base_path" \
+    -port "$web_port" \
+    -webListen "127.0.0.1" \
+    -username "$admin_user" \
+    -password "$admin_pass" >/dev/null
+
+  docker restart "$container" >/dev/null
+  for _ in $(seq 1 30); do
+    docker exec "$container" true >/dev/null 2>&1 && break
+    sleep 1
+  done
+  log "xui-configure готово (base_path=$base_path)"
+}
+
+# ---------------------------------------------------------------------------
+# проверка dest перед созданием Reality-инбаунда: TLS1.3 + HTTP/2 handshake
+# ---------------------------------------------------------------------------
+cmd_tls_ping() {
+  local dest="${1:?usage: tls-ping <domain>}"
+  local out
+  if ! out=$(echo | openssl s_client -connect "${dest}:443" -tls1_3 -alpn h2 -servername "$dest" 2>&1); then
+    echo "FAIL"; return 0
+  fi
+  if grep -q "TLSv1.3" <<<"$out" && grep -qi "ALPN protocol: h2" <<<"$out"; then
+    echo "OK"
+  else
+    echo "FAIL"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# создание VLESS+Reality инбаунда через API 3x-ui
+# ---------------------------------------------------------------------------
+# vless-create <xui_base_url e.g. http://127.0.0.1:2053/base/> <user> <pass> <dest> <server_name>
+cmd_vless_create() {
+  local base_url="${1:?usage: vless-create <base_url> <user> <pass> <dest> <server_name>}"
+  local user="$2" pass="$3" dest="$4" server_name="$5"
+  base_url="${base_url%/}"
+  local cookies; cookies=$(mktemp)
+  trap 'rm -f "$cookies"' RETURN
+
+  curl -fsS -c "$cookies" -o /dev/null \
+    -d "username=${user}" -d "password=${pass}" \
+    "${base_url}/login" || die "3x-ui login не прошёл"
+
+  local existing
+  existing=$(curl -fsS -b "$cookies" "${base_url}/panel/api/inbounds/list" || echo '{}')
+  if grep -q '"remark":"vless-reality"' <<<"$existing"; then
+    log "инбаунд vless-reality уже существует — не создаю повторно"
+    return 0
+  fi
+
+  # путь к бинарю xray внутри образа 3x-ui — проверено на mhsanaei/3x-ui,
+  # при смене образа/версии может съехать, поэтому пробуем оба варианта
+  local keys
+  keys=$(docker exec 3x-ui /app/xray x25519 2>/dev/null || docker exec 3x-ui xray x25519 2>/dev/null || true)
+  local priv; priv=$(grep -i 'Private' <<<"$keys" | awk '{print $NF}')
+  local pub;  pub=$(grep -i 'Public'  <<<"$keys" | awk '{print $NF}')
+  [[ -n "$priv" && -n "$pub" ]] || die "не удалось сгенерировать x25519-ключи Reality"
+
+  local uuid; uuid=$(cat /proc/sys/kernel/random/uuid)
+  local short_id; short_id=$(head -c4 /dev/urandom | xxd -p)
+
+  local settings streamSettings sniffing
+  settings=$(cat <<JSON
+{"clients":[{"id":"${uuid}","flow":"xtls-rprx-vision","email":"client1"}],"decryption":"none"}
+JSON
+)
+  streamSettings=$(cat <<JSON
+{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${dest}:443","xver":0,"serverNames":["${server_name}"],"privateKey":"${priv}","shortIds":["${short_id}"],"fingerprint":"chrome","spiderX":"/"}}
+JSON
+)
+  sniffing='{"enabled":false,"destOverride":["http","tls"]}'
+
+  local payload
+  payload=$(cat <<JSON
+{"up":0,"down":0,"total":0,"remark":"vless-reality","enable":true,"expiryTime":0,
+"listen":"","port":443,"protocol":"vless",
+"settings":$(printf '%s' "$settings" | tr -d '\n'),
+"streamSettings":$(printf '%s' "$streamSettings" | tr -d '\n'),
+"sniffing":$(printf '%s' "$sniffing" | tr -d '\n')}
+JSON
+)
+
+  curl -fsS -b "$cookies" -o /dev/null \
+    -H 'Content-Type: application/json' \
+    -d "$payload" \
+    "${base_url}/panel/api/inbounds/add" || die "создание инбаунда не прошло"
+
+  log "VLESS+Reality инбаунд создан (uuid=$uuid shortId=$short_id publicKey=$pub)"
+  # для сводки — единственное, что нужно домашнему ПК
+  printf 'VLESS_UUID=%s\n'      "$uuid"
+  printf 'VLESS_PUBKEY=%s\n'    "$pub"
+  printf 'VLESS_SHORTID=%s\n'   "$short_id"
+  printf 'VLESS_DEST=%s\n'      "$dest"
+  printf 'VLESS_SNI=%s\n'       "$server_name"
+}
+
+# ---------------------------------------------------------------------------
+main() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    docker-install)           cmd_docker_install "$@" ;;
+    docker-group-add)         cmd_docker_group_add "$@" ;;
+    repo-sync)                cmd_repo_sync "$@" ;;
+    dirs-init)                cmd_dirs_init "$@" ;;
+    render-compose)           cmd_render_compose "$@" ;;
+    acme-install)             cmd_acme_install "$@" ;;
+    cert-issue)               cmd_cert_issue "$@" ;;
+    cert-switch-to-webroot)   cmd_cert_switch_to_webroot "$@" ;;
+    render-nginx)             cmd_render_nginx "$@" ;;
+    compose-up)               cmd_compose_up "$@" ;;
+    compose-up-service)       cmd_compose_up_service "$@" ;;
+    xui-configure)            cmd_xui_configure "$@" ;;
+    tls-ping)                 cmd_tls_ping "$@" ;;
+    vless-create)              cmd_vless_create "$@" ;;
+    *) die "неизвестная подкоманда: '$sub'" ;;
+  esac
+}
+
+main "$@"
