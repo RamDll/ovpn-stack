@@ -31,6 +31,19 @@ table inet filter {
 
     chain forward {
         type filter hook forward priority 0; policy drop;
+
+        ct state established,related accept
+        ct state invalid drop
+
+        # Docker forward'ит трафик контейнеров через этот хук — без явного
+        # accept здесь ни у одного контейнера нет исходящей сети (DNS,
+        # сборка образов), а OpenVPN не сможет форвардить трафик клиентов
+        # вообще. docker0 — дефолтная bridge-сеть, br-* — именованные сети
+        # docker-compose (у нас ovpn-stack-vpn).
+        iifname "docker0" accept
+        oifname "docker0" accept
+        iifname "br-*" accept
+        oifname "br-*" accept
     }
 
     chain output {
