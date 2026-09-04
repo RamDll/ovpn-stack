@@ -50,7 +50,10 @@ server {
         limit_req zone=panels burst=20 nodelay;
         # ovpn-admin делит netns с openvpn (network_mode: service:openvpn),
         # своего DNS-имени в compose-сети у него нет — апстрим через openvpn.
-        proxy_pass http://openvpn:8080@@OVPN_ADMIN_PATH@@;
+        # В отличие от 3x-ui, у ovpn-admin нет своего webBasePath — приложение
+        # ничего не знает о префиксе пути, поэтому proxy_pass без него: nginx
+        # срезает location-префикс перед проксированием.
+        proxy_pass http://openvpn:8080/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
