@@ -324,6 +324,16 @@ cmd_compose_up_service() {
   ( cd "$RENDER_DIR" && docker compose -f docker-compose.yml up -d --build "$svc" )
 }
 
+# nginx-reload — `docker compose up` не трогает уже запущенный контейнер,
+# если его спецификация (образ/порты/volume-список) не изменилась; сам
+# bind-mounted конфиг он не хэширует. При повторном прогоне install/
+# base-path панелей каждый раз новый (render-nginx перезаписывает файл
+# на диске), а contain уже работает со СТАРЫМ конфигом, загруженным в
+# воркеры при старте — без явного reload это тихо остаётся 404.
+cmd_nginx_reload() {
+  ( cd "$RENDER_DIR" && docker compose -f docker-compose.yml exec -T nginx nginx -s reload )
+}
+
 # ---------------------------------------------------------------------------
 # 3x-ui: базовая настройка (webBasePath/webPort/логин) через встроенный CLI
 # ---------------------------------------------------------------------------
@@ -476,6 +486,7 @@ main() {
     render-nginx)             cmd_render_nginx "$@" ;;
     compose-up)               cmd_compose_up "$@" ;;
     compose-up-service)       cmd_compose_up_service "$@" ;;
+    nginx-reload)             cmd_nginx_reload "$@" ;;
     xui-configure)            cmd_xui_configure "$@" ;;
     tls-ping)                 cmd_tls_ping "$@" ;;
     vless-create)              cmd_vless_create "$@" ;;

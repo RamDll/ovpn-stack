@@ -437,6 +437,7 @@ fi
 step "Рендер и запуск nginx (последним — сертификат уже есть)"
 ssh_key "${INSTALLVPN} render-nginx '${MODE}' '${XUI_BASE_PATH}' '${XUI_PORT}' '${OVPN_ADMIN_PATH}'"
 ssh_key "${INSTALLVPN} compose-up-service nginx"
+ssh_key "${INSTALLVPN} nginx-reload"
 sudo_key "${INSTALLVPN} cert-switch-to-webroot '${IP}'"
 ok "nginx поднят, продление сертификата переключено на webroot"
 
