@@ -22,7 +22,9 @@ TMPL_DIR="$INSTALL_DIR/install/templates"
 STATE_DIR="$INSTALL_DIR/state"
 ACME_HOME="$INSTALL_DIR/.acme.sh"
 ACME_BIN="$ACME_HOME/acme.sh"
-ACME_TAG="3.0.9"   # пин версии — никаких curl|sh с апстрима, только git clone на тег
+ACME_TAG="3.1.4"   # пин версии — никаких curl|sh с апстрима, только git clone на тег.
+                    # 3.0.9 не умеет --cert-profile (нужен для IP-сертификатов
+                    # Let's Encrypt, профиль появился в 3.1.2+)
 
 # ---------------------------------------------------------------------------
 # шаг 4.0 — Docker (репозиторий apt, БЕЗ convenience-скрипта get.docker.com —
@@ -183,8 +185,13 @@ cmd_acme_install() {
   fi
 
   if [[ -x "$ACME_BIN" ]]; then
-    log "acme.sh уже установлен"
-    return 0
+    local installed_ver
+    installed_ver="$("$ACME_BIN" --home "$ACME_HOME" --version 2>/dev/null | tail -1 | awk -F'v' '{print $NF}')"
+    if [[ "$installed_ver" == "$ACME_TAG" ]]; then
+      log "acme.sh $ACME_TAG уже установлен"
+      return 0
+    fi
+    log "acme.sh установлен как $installed_ver, нужен $ACME_TAG — переустанавливаю"
   fi
   log "ставлю acme.sh (git clone, тег $ACME_TAG — без curl|sh)"
   local tmp; tmp=$(mktemp -d)
@@ -238,6 +245,7 @@ cmd_cert_issue() {
   "$ACME_BIN" --home "$ACME_HOME" --issue --standalone \
     --server letsencrypt \
     -d "$ip" \
+    --cert-profile shortlived \
     --days 3 \
     "${email_arg[@]}"
 
@@ -257,7 +265,7 @@ cmd_cert_switch_to_webroot() {
   "$ACME_BIN" --home "$ACME_HOME" --set-notify-hook null >/dev/null 2>&1 || true
   # meняем challenge-alias на webroot без переиздания сертификата
   sed -i "s#^Le_Webroot=.*#Le_Webroot='${webroot}'#" "$ACME_HOME/${ip}_ecc/${ip}.conf" 2>/dev/null || \
-    "$ACME_BIN" --home "$ACME_HOME" --issue -d "$ip" -w "$webroot" --server letsencrypt --days 3 --force
+    "$ACME_BIN" --home "$ACME_HOME" --issue -d "$ip" -w "$webroot" --server letsencrypt --cert-profile shortlived --days 3 --force
   log "cert-switch-to-webroot готово"
 }
 
