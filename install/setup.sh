@@ -432,6 +432,12 @@ if [[ "$MODE" == "vless" || "$MODE" == "all" ]]; then
 fi
 if [[ "$MODE" == "openvpn" || "$MODE" == "all" ]]; then
   OVPN_ADMIN_PATH="/ovpn-$(openssl rand -hex 4)/"
+  # ovpn-admin не умеет проверять пароль сам (в отличие от 3x-ui) —
+  # секретный путь без Basic Auth перед ним означает вообще без защиты.
+  OVPN_ADMIN_USER="admin"
+  OVPN_ADMIN_PASS="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 20)"
+  step "Basic Auth для панели ovpn-admin"
+  ssh_key "${INSTALLVPN} htpasswd-generate '${OVPN_ADMIN_USER}' '${OVPN_ADMIN_PASS}'"
 fi
 
 step "Рендер и запуск nginx (последним — сертификат уже есть)"
@@ -505,7 +511,9 @@ save_state
   if [[ -n "$OVPN_ADMIN_PATH" ]]; then
     echo "== Панель ovpn-admin =="
     echo "URL: https://${IP}:8443${OVPN_ADMIN_PATH}"
-    echo "(логин/пароль панели — задай при первом входе, см. её собственную документацию)"
+    echo "Basic Auth логин: ${OVPN_ADMIN_USER}"
+    echo "Basic Auth пароль: ${OVPN_ADMIN_PASS}"
+    echo "(у самого приложения своего логина нет — вход только через Basic Auth выше)"
     echo
   fi
   if [[ -n "$VLESS_LINE" ]]; then

@@ -48,6 +48,11 @@ server {
 # BEGIN OPENVPN
     location @@OVPN_ADMIN_PATH@@ {
         limit_req zone=panels burst=20 nodelay;
+        # у ovpn-admin нет своего логина (в отличие от 3x-ui) — без Basic
+        # Auth секретный путь был бы единственной защитой, то есть вообще
+        # без пароля. htpasswd генерируется install-vpn.sh htpasswd-generate.
+        auth_basic           "ovpn-admin";
+        auth_basic_user_file /etc/nginx/htpasswd;
         # ovpn-admin делит netns с openvpn (network_mode: service:openvpn),
         # своего DNS-имени в compose-сети у него нет — апстрим через openvpn.
         # В отличие от 3x-ui, у ovpn-admin нет своего webBasePath — приложение
