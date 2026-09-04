@@ -1,0 +1,59 @@
+# Рендерится install-vpn.sh (render-nginx) в install-render/nginx/conf.d/default.conf.
+# Блоки # BEGIN.../# END... вырезаются целиком, если режим их не требует.
+# Панели — по неочевидным путям, limit_req вместо fail2ban (см. README §8, §11).
+
+limit_req_zone $binary_remote_addr zone=panels:10m rate=10r/s;
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name _;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/acme;
+    }
+
+    location / {
+        return 301 https://$host:8443$request_uri;
+    }
+}
+
+server {
+    listen 8443 ssl;
+    listen [::]:8443 ssl;
+    server_name _;
+    http2 on;
+
+    ssl_certificate     /etc/nginx/ssl/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+
+    location / {
+        root /usr/share/nginx/html;
+        index index.html;
+    }
+
+# BEGIN VLESS
+    location @@XUI_BASE_PATH@@ {
+        limit_req zone=panels burst=20 nodelay;
+        proxy_pass http://host.docker.internal:@@XUI_PORT@@@@XUI_BASE_PATH@@;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+# END VLESS
+# BEGIN OPENVPN
+    location @@OVPN_ADMIN_PATH@@ {
+        limit_req zone=panels burst=20 nodelay;
+        # ovpn-admin делит netns с openvpn (network_mode: service:openvpn),
+        # своего DNS-имени в compose-сети у него нет — апстрим через openvpn.
+        proxy_pass http://openvpn:8080@@OVPN_ADMIN_PATH@@;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+# END OPENVPN
+}
