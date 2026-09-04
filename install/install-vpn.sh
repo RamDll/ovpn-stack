@@ -471,7 +471,7 @@ cmd_vless_create() {
 
   local settings streamSettings sniffing
   settings=$(cat <<JSON
-{"clients":[{"id":"${uuid}","flow":"xtls-rprx-vision","email":"${client_email}"}],"decryption":"none"}
+{"clients":[{"id":"${uuid}","flow":"xtls-rprx-vision","email":"${client_email}","enable":true}],"decryption":"none"}
 JSON
 )
   streamSettings=$(cat <<JSON
