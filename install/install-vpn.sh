@@ -340,7 +340,7 @@ cmd_xui_configure() {
   docker exec "$container" /app/x-ui setting \
     -webBasePath "$base_path" \
     -port "$web_port" \
-    -webListen "127.0.0.1" \
+    -listenIP "127.0.0.1" \
     -username "$admin_user" \
     -password "$admin_pass" >/dev/null
 
