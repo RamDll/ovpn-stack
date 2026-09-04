@@ -227,6 +227,11 @@ cmd_nftables_apply() {
   local tmpl="$INSTALL_DIR/install/templates/nftables.conf.tmpl"
   [[ -f "$tmpl" ]] || die "не найден шаблон $tmpl"
 
+  local vless_block=""
+  if [[ "$mode" == "vless" || "$mode" == "all" ]]; then
+    vless_block="        tcp dport 443 accept  # Xray (3x-ui) — VLESS Reality"
+  fi
+
   local ovpn_block=""
   if [[ "$mode" == "openvpn" || "$mode" == "all" ]]; then
     [[ -n "$ovpn_port" ]] || die "режим $mode требует ovpn_udp_port"
@@ -237,6 +242,7 @@ cmd_nftables_apply() {
   rendered=$(mktemp)
   sed \
     -e "s/@@SSH_PORT@@/${ssh_port}/g" \
+    -e "s/@@VLESS_RULE@@/${vless_block//\//\\/}/g" \
     -e "s/@@OPENVPN_RULE@@/${ovpn_block//\//\\/}/g" \
     "$tmpl" > "$rendered"
 
