@@ -5,9 +5,13 @@
 > Для установки на прод используйте корневой [`install.sh`](../install.sh).
 
 > **Решено: VLESS+Reality handshake был нестабилен из-за внешнего dest.**
-> После фикса minClientVer (3x-ui запинена на v3.4.2 / xray-core v26.6.27 —
-> :latest на xray-core 26.7.11+ отклоняет вообще всех клиентов, см.
-> MHSanaei/3x-ui#5922) хэндшейк всё ещё падал с "REALITY: received real
+> 3x-ui запинена на v3.4.2 / xray-core v26.6.27 из-за minClientVer-регрессии
+> в апстриме (MHSanaei/3x-ui#5922): проверено вживую — на `:latest`
+> (xray-core 26.7.28) raw xray-core-клиент проходит нормально (5/5), а
+> sing-box (и, соответственно, Happ) проваливает саму REALITY-аутентификацию
+> и падает в fallback с "x509: certificate signed by unknown authority"
+> (0/5). На v3.4.2 оба клиента стабильно работают (см. ниже). До фикса
+> minClientVer хэндшейк всё ещё падал с "REALITY: received real
 > certificate" непредсказуемо часто (0 из 10 попыток подряд). Причина —
 > REALITY синхронно дозванивается до `dest` на каждое соединение до
 > чтения ClientHello (`xtls/reality`, `tls.go`, `func Server`); внешний
