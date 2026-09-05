@@ -416,6 +416,10 @@ cmd_fakesite_install() {
   if ! command -v nginx >/dev/null 2>&1; then
     log "ставлю nginx (хостовый, отдельно от Docker — только под локальный dest)"
     apt-get -o DPkg::Lock::Timeout=120 -y install -qq nginx
+    # дефолтный сайт пакета слушает 0.0.0.0:80/[::]:80 — конфликтует с
+    # портом 80 Docker-контейнера nginx (ACME). Нам он не нужен: наш
+    # единственный vhost сидит на 127.0.0.1:${FAKESITE_PORT}.
+    rm -f /etc/nginx/sites-enabled/default
   fi
 
   local certdir="/etc/ssl/ovpn-stack-fakesite"
@@ -439,7 +443,8 @@ EOF
 # Только dest для REALITY: bind на 127.0.0.1, наружу не торчит, в
 # firewall правило не нужно (loopback уже разрешён).
 server {
-    listen 127.0.0.1:${FAKESITE_PORT} ssl http2;
+    listen 127.0.0.1:${FAKESITE_PORT} ssl;
+    http2 on;
     server_name ${domain};
     ssl_certificate     ${certdir}/fullchain.pem;
     ssl_certificate_key ${certdir}/privkey.pem;
@@ -451,7 +456,7 @@ server {
 EOF
 
   nginx -t
-  systemctl enable --now nginx >/dev/null 2>&1
+  systemctl enable --now nginx
   systemctl reload nginx
   log "fakesite-install готово (127.0.0.1:${FAKESITE_PORT}, SNI=${domain})"
   # для setup.sh — единственное, что нужно передать в vless-create
