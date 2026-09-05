@@ -395,25 +395,73 @@ cmd_xui_configure() {
 }
 
 # ---------------------------------------------------------------------------
-# проверка dest перед созданием Reality-инбаунда: TLS1.3 + HTTP/2 handshake
+# fakesite — локальный TLS-сайт как dest для REALITY, вместо внешнего домена.
 # ---------------------------------------------------------------------------
-cmd_tls_ping() {
-  local dest="${1:?usage: tls-ping <domain>}"
-  local out
-  if ! out=$(echo | openssl s_client -connect "${dest}:443" -tls1_3 -alpn h2 -servername "$dest" 2>&1); then
-    echo "FAIL"; return 0
+# REALITY на каждое входящее соединение СИНХРОННО дозванивается до dest —
+# ДО чтения ClientHello клиента (github.com/xtls/reality tls.go, func Server:
+# `target, err := config.DialContext(ctx, config.Type, config.Dest)` —
+# самая первая строчка). На реальном внешнем домене (www.kth.se, сам по
+# себе быстрый и надёжный — 10/10 curl с этого же сервера) это давало
+# 0/10 успешных VLESS-хэндшейков подряд: сервер получал ClientHello,
+# подтверждал TCP ACK и не отвечал вообще ничего — зависание внутри xray
+# после dial, а не сетевая проблема. Локальный dest (127.0.0.1) убирает
+# сетевой хоп полностью — тот же прогон дал 10/10. Тот же приём есть в
+# проверенном рабочем скрипте github.com/YukiKras/vless-scripts
+# (SelfSNI: self-signed сертификат + 127.0.0.1). SNI-домен остаётся
+# правдоподобным именем для маскировки — сервер к нему не обращается.
+FAKESITE_PORT=8444
+cmd_fakesite_install() {
+  need_root fakesite-install
+  local domain="${1:?usage: fakesite-install <domain>}"
+  if ! command -v nginx >/dev/null 2>&1; then
+    log "ставлю nginx (хостовый, отдельно от Docker — только под локальный dest)"
+    apt-get -o DPkg::Lock::Timeout=120 -y install -qq nginx
   fi
-  if grep -q "TLSv1.3" <<<"$out" && grep -qi "ALPN protocol: h2" <<<"$out"; then
-    echo "OK"
-  else
-    echo "FAIL"
+
+  local certdir="/etc/ssl/ovpn-stack-fakesite"
+  mkdir -p "$certdir"
+  if [[ ! -f "$certdir/fullchain.pem" ]]; then
+    log "self-signed сертификат для '$domain' — виден только серверу самому себе, не реальным клиентам"
+    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+      -keyout "$certdir/privkey.pem" -out "$certdir/fullchain.pem" \
+      -subj "/CN=${domain}" >/dev/null 2>&1
   fi
+
+  mkdir -p /var/www/ovpn-stack-fakesite
+  if [[ ! -f /var/www/ovpn-stack-fakesite/index.html ]]; then
+    cat > /var/www/ovpn-stack-fakesite/index.html <<EOF
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${domain}</title></head><body></body></html>
+EOF
+  fi
+
+  cat > /etc/nginx/conf.d/ovpn-stack-fakesite.conf <<EOF
+# Управляется install-vpn.sh fakesite-install — не редактировать руками.
+# Только dest для REALITY: bind на 127.0.0.1, наружу не торчит, в
+# firewall правило не нужно (loopback уже разрешён).
+server {
+    listen 127.0.0.1:${FAKESITE_PORT} ssl http2;
+    server_name ${domain};
+    ssl_certificate     ${certdir}/fullchain.pem;
+    ssl_certificate_key ${certdir}/privkey.pem;
+    root /var/www/ovpn-stack-fakesite;
+    location / {
+        index index.html;
+    }
+}
+EOF
+
+  nginx -t
+  systemctl enable --now nginx >/dev/null 2>&1
+  systemctl reload nginx
+  log "fakesite-install готово (127.0.0.1:${FAKESITE_PORT}, SNI=${domain})"
+  # для setup.sh — единственное, что нужно передать в vless-create
+  printf 'FAKESITE_DEST=127.0.0.1:%s\n' "$FAKESITE_PORT"
 }
 
 # ---------------------------------------------------------------------------
 # создание VLESS+Reality инбаунда через API 3x-ui
 # ---------------------------------------------------------------------------
-# vless-create <xui_base_url e.g. http://127.0.0.1:2053/base/> <user> <pass> <dest> <server_name>
+# vless-create <xui_base_url e.g. http://127.0.0.1:2053/base/> <user> <pass> <dest host:port, обычно 127.0.0.1:8444 — см. fakesite-install> <server_name (SNI)>
 cmd_vless_create() {
   local base_url="${1:?usage: vless-create <base_url> <user> <pass> <dest> <server_name>}"
   local user="$2" pass="$3" dest="$4" server_name="$5"
@@ -475,7 +523,7 @@ cmd_vless_create() {
 JSON
 )
   streamSettings=$(cat <<JSON
-{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${dest}:443","xver":0,"serverNames":["${server_name}"],"privateKey":"${priv}","shortIds":["${short_id}"],"fingerprint":"chrome","spiderX":"/"}}
+{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${dest}","xver":0,"serverNames":["${server_name}"],"privateKey":"${priv}","shortIds":["${short_id}"],"fingerprint":"chrome","spiderX":"/"}}
 JSON
 )
   sniffing='{"enabled":false,"destOverride":["http","tls"]}'
@@ -530,7 +578,7 @@ main() {
     compose-up-service)       cmd_compose_up_service "$@" ;;
     nginx-reload)             cmd_nginx_reload "$@" ;;
     xui-configure)            cmd_xui_configure "$@" ;;
-    tls-ping)                 cmd_tls_ping "$@" ;;
+    fakesite-install)         cmd_fakesite_install "$@" ;;
     vless-create)              cmd_vless_create "$@" ;;
     *) die "неизвестная подкоманда: '$sub'" ;;
   esac
