@@ -84,12 +84,33 @@ fingerprint в externalProxy tlsSettings, имена внешних ссылок
 - `spx` (spiderX) в ссылке рандомится на каждый запрос — так устроен
   3x-ui v3.4.2, не поломка.
 
-### Доступ к тест-серверу
+### Доступ к тест-серверу (`REDACTED-IP`)
 
-sshd захардён (`bootstrap.sh sshd-harden`): порт **28848**, `PermitRootLogin no`,
-рабочий юзер — `ramdll` (группы `sudo`, `docker`). Не `root` на 22, как можно
-подумать. Копия `x-ui.db` осталась в `~/xui-inspect/` на сервере (там `secret`,
-`panelGuid` — можно удалить).
+sshd захардён (`bootstrap.sh sshd-harden` → drop-in `99-ovpn-stack.conf`):
+`PermitRootLogin no`, `PasswordAuthentication no`, порт **28848** (не 22 —
+случайный 20000–60000, выбирается `setup.sh`; лежит в `state/` на машине,
+откуда ставили, в git его нет). trixie — socket-активация, порт правится
+и в `ssh.socket` drop-in.
+
+- **Юзер `ramdll`** (uid 1000, группы `sudo` + `docker`) — не `root`.
+  Sudo без пароля не проверял; docker доступен напрямую (группа).
+- SSH-ключ Claude Code (`~/.ssh/id_ed25519`, комментарий `new_arch`)
+  добавлен в `/home/ramdll/.ssh/authorized_keys`. Алиас на домашнем ПК:
+  `~/.ssh/config` → `Host vps` (`HostName REDACTED-IP`, `User ramdll`,
+  `Port 28848`). Разрешение в Claude Code: `Bash(ssh vps:*)` в
+  `.claude/settings.local.json` (в gitignore).
+- Панель: `https://REDACTED-IP:8443/x-92a5a2b2/`, логин по NOTES ниже
+  (`admin` / `Testpass123` — сменить). Инспекция БД:
+  `docker cp 3x-ui:/etc/x-ui/x-ui.db ~/xui-inspect/` (sqlite3/python3 есть
+  на хосте, в контейнере — нет). Копия `x-ui.db` осталась в
+  `~/xui-inspect/` (внутри `secret`, `panelGuid` — можно удалить).
+- Файрвол пускает `28848` (SSH), `80` (ACME), `443` (VLESS/REALITY),
+  `8443` (nginx: панели + подписка). Порты `2053`/`2096`/`8080` — только
+  с docker-интерфейсов.
+- Живой `install-render/nginx/conf.d/default.conf` на сервере уже
+  пропатчен вручную под фикс `$http_host` (2026-09-06) и перезагружен;
+  `install-render/` в gitignore, чистый `render-nginx` перезапишет его
+  из шаблона.
 
 ## 2026-09-05 — телефон не подключался по VLESS
 
