@@ -422,13 +422,20 @@ ok "сертификат выпущен (standalone, порт 80)"
 # -------------------------------------------------------------------------
 XUI_BASE_PATH=""
 XUI_PORT="2053"
+SUB_PATH=""
+SUB_JSON_PATH=""
 OVPN_ADMIN_PATH=""
 if [[ "$MODE" == "vless" || "$MODE" == "all" ]]; then
   XUI_BASE_PATH="/x-$(openssl rand -hex 4)/"
+  # неочевидные пути для подписки — как у панели (см. README §8, §11)
+  SUB_PATH="/sub-$(openssl rand -hex 8)/"
+  SUB_JSON_PATH="/json-$(openssl rand -hex 8)/"
   XUI_ADMIN_USER="admin"
   XUI_ADMIN_PASS="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 20)"
   step "Настраиваю 3x-ui (webBasePath, логин панели)"
   ssh_key "${INSTALLVPN} xui-configure 3x-ui '${XUI_BASE_PATH}' '${XUI_ADMIN_USER}' '${XUI_ADMIN_PASS}' '${XUI_PORT}'"
+  step "Включаю подписку 3x-ui (за nginx :8443, путь ${SUB_PATH})"
+  sudo_key "${INSTALLVPN} xui-enable-sub 3x-ui '${SUB_PATH}' '${SUB_JSON_PATH}' '${IP}'"
 fi
 if [[ "$MODE" == "openvpn" || "$MODE" == "all" ]]; then
   OVPN_ADMIN_PATH="/ovpn-$(openssl rand -hex 4)/"
@@ -441,7 +448,7 @@ if [[ "$MODE" == "openvpn" || "$MODE" == "all" ]]; then
 fi
 
 step "Рендер и запуск nginx (последним — сертификат уже есть)"
-ssh_key "${INSTALLVPN} render-nginx '${MODE}' '${XUI_BASE_PATH}' '${XUI_PORT}' '${OVPN_ADMIN_PATH}'"
+ssh_key "${INSTALLVPN} render-nginx '${MODE}' '${XUI_BASE_PATH}' '${XUI_PORT}' '${OVPN_ADMIN_PATH}' '${SUB_PATH}' '${SUB_JSON_PATH}'"
 ssh_key "${INSTALLVPN} compose-up-service nginx"
 ssh_key "${INSTALLVPN} nginx-reload"
 sudo_key "${INSTALLVPN} cert-switch-to-webroot '${IP}'"
@@ -451,6 +458,7 @@ ok "nginx поднят, продление сертификата переклю
 # шаг 5 — первый VLESS+Reality инбаунд
 # ===========================================================================
 VLESS_LINE=""
+VLESS_SUBID=""
 if [[ "$MODE" == "vless" || "$MODE" == "all" ]]; then
   step "Шаг 5 — первый VLESS+Reality инбаунд"
   read -rp "Домен для SNI (просто правдоподобное имя, к серверу не подключаемся — см. README §9): " DEST
@@ -463,10 +471,11 @@ if [[ "$MODE" == "vless" || "$MODE" == "all" ]]; then
   ok "fakesite поднят на ${FAKESITE_DEST}, SNI=${DEST}"
 
   XUI_BASE_URL="http://127.0.0.1:${XUI_PORT}${XUI_BASE_PATH}"
-  VLESS_OUT="$(ssh_key "${INSTALLVPN} vless-create '${XUI_BASE_URL}' '${XUI_ADMIN_USER}' '${XUI_ADMIN_PASS}' '${FAKESITE_DEST}' '${DEST}'")"
+  VLESS_OUT="$(ssh_key "${INSTALLVPN} vless-create '${XUI_BASE_URL}' '${XUI_ADMIN_USER}' '${XUI_ADMIN_PASS}' '${FAKESITE_DEST}' '${DEST}' '${IP}'")"
   VLESS_UUID="$(awk -F= '/^VLESS_UUID=/{print $2}' <<<"$VLESS_OUT")"
   VLESS_PUBKEY="$(awk -F= '/^VLESS_PUBKEY=/{print $2}' <<<"$VLESS_OUT")"
   VLESS_SHORTID="$(awk -F= '/^VLESS_SHORTID=/{print $2}' <<<"$VLESS_OUT")"
+  VLESS_SUBID="$(awk -F= '/^VLESS_SUBID=/{print $2}' <<<"$VLESS_OUT")"
   VLESS_FP="$(awk -F= '/^VLESS_FP=/{print $2}' <<<"$VLESS_OUT")"
   VLESS_FP="${VLESS_FP:-firefox}"   # см. install-vpn.sh: chrome режет реальный оператор
   if [[ -n "$VLESS_UUID" && -n "$VLESS_PUBKEY" ]]; then
@@ -518,6 +527,19 @@ save_state
   if [[ -n "$VLESS_LINE" ]]; then
     echo "== Первый VLESS-ключ =="
     echo "$VLESS_LINE"
+    echo
+  fi
+  if [[ -n "$SUB_PATH" ]]; then
+    echo "== Подписка 3x-ui =="
+    if [[ -n "$VLESS_SUBID" ]]; then
+      echo "URL первого клиента: https://${IP}:8443${SUB_PATH}${VLESS_SUBID}"
+      echo "JSON-подписка:        https://${IP}:8443${SUB_JSON_PATH}${VLESS_SUBID}"
+      echo
+    fi
+    echo "Для новых клиентов: URL = https://${IP}:8443${SUB_PATH} + его subId"
+    echo "(поле Sub ID в карточке клиента в панели)."
+    echo "ВАЖНО: QR и кнопку «копировать» в самой панели НЕ использовать —"
+    echo "3x-ui за прокси на :8443 клеит URL без пути. Собирать URL по схеме выше."
     echo
   fi
   echo "== Напоминания =="

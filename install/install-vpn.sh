@@ -289,12 +289,14 @@ cmd_htpasswd_generate() {
 # ---------------------------------------------------------------------------
 # nginx — рендер конфига и запуск последним
 # ---------------------------------------------------------------------------
-# render-nginx <mode> <xui_base_path> <xui_port> <ovpn_admin_path>
+# render-nginx <mode> <xui_base_path> <xui_port> <ovpn_admin_path> [sub_path] [sub_json_path]
 cmd_render_nginx() {
-  local mode="${1:?usage: render-nginx <mode> <xui_base_path> <xui_port> <ovpn_admin_path>}"
+  local mode="${1:?usage: render-nginx <mode> <xui_base_path> <xui_port> <ovpn_admin_path> [sub_path] [sub_json_path]}"
   local xui_path="${2:-}"
   local xui_port="${3:-2053}"
   local ovpn_admin_path="${4:-}"
+  local sub_path="${5:-}"
+  local sub_json_path="${6:-}"
   local tmpl="$TMPL_DIR/nginx.conf.tmpl"
   local out="$RENDER_DIR/nginx/conf.d/default.conf"
   mkdir -p "$RENDER_DIR/nginx/conf.d"
@@ -303,7 +305,9 @@ cmd_render_nginx() {
   render_tmpl "$tmpl" "$out" \
     "XUI_BASE_PATH=${xui_path}" \
     "XUI_PORT=${xui_port}" \
-    "OVPN_ADMIN_PATH=${ovpn_admin_path}"
+    "OVPN_ADMIN_PATH=${ovpn_admin_path}" \
+    "SUB_PATH=${sub_path}" \
+    "SUB_JSON_PATH=${sub_json_path}"
 
   if [[ "$mode" != "vless" && "$mode" != "all" ]]; then
     strip_block "$out" "# BEGIN VLESS" "# END VLESS"
@@ -394,6 +398,52 @@ cmd_xui_configure() {
   log "xui-configure готово (base_path=$base_path)"
 }
 
+# xui-enable-sub <container> <sub_path> <sub_json_path> <public_ip>
+# Включает sub-сервер 3x-ui. Флагов в `x-ui setting` для этого нет, а
+# panel-API требует CSRF-пляски — правим x-ui.db напрямую (python3 + sqlite3
+# есть на минимальном Debian). Контейнер на время правки останавливаем,
+# иначе 3x-ui перезапишет БД своим состоянием при выходе.
+cmd_xui_enable_sub() {
+  local container="${1:?usage: xui-enable-sub <container> <sub_path> <sub_json_path> <public_ip>}"
+  local sub_path="$2" sub_json_path="$3" ip="$4"
+  local db="$INSTALL_DIR/data/xui/x-ui.db"
+  [[ -f "$db" ]] || die "не найдена база 3x-ui: $db"
+  command -v python3 >/dev/null || die "нужен python3 для правки x-ui.db"
+
+  docker stop "$container" >/dev/null
+  python3 - "$db" "$sub_path" "$sub_json_path" "$ip" <<'PY'
+import sqlite3, sys
+db, sub_path, sub_json_path, ip = sys.argv[1:5]
+# subURI — полный базовый URL с путём и слэшем; 3x-ui дописывает к нему subId.
+# subPort/subJsonPath наружу закрыты firewall'ом, доступны только через nginx :8443.
+kv = {
+    "subEnable": "true",
+    "subJsonEnable": "true",
+    "subListen": "",
+    "subPort": "2096",
+    "subPath": sub_path,
+    "subJsonPath": sub_json_path,
+    "subURI": f"https://{ip}:8443{sub_path}",
+    "subJsonURI": f"https://{ip}:8443{sub_json_path}",
+    "subDomain": "",
+    "subEncrypt": "true",
+    "subShowInfo": "true",
+    "subUpdates": "12",
+}
+c = sqlite3.connect(db)
+for k, v in kv.items():
+    c.execute("DELETE FROM settings WHERE key=?", (k,))
+    c.execute("INSERT INTO settings(key,value) VALUES(?,?)", (k, v))
+c.commit()
+PY
+  docker start "$container" >/dev/null
+  for _ in $(seq 1 30); do
+    docker exec "$container" true >/dev/null 2>&1 && break
+    sleep 1
+  done
+  log "xui-enable-sub готово (sub_path=$sub_path)"
+}
+
 # ---------------------------------------------------------------------------
 # fakesite — локальный TLS-сайт как dest для REALITY, вместо внешнего домена.
 # ---------------------------------------------------------------------------
@@ -472,10 +522,10 @@ EOF
 # ---------------------------------------------------------------------------
 # создание VLESS+Reality инбаунда через API 3x-ui
 # ---------------------------------------------------------------------------
-# vless-create <xui_base_url e.g. http://127.0.0.1:2053/base/> <user> <pass> <dest host:port, обычно 127.0.0.1:8444 — см. fakesite-install> <server_name (SNI)>
+# vless-create <xui_base_url e.g. http://127.0.0.1:2053/base/> <user> <pass> <dest host:port, обычно 127.0.0.1:8444 — см. fakesite-install> <server_name (SNI)> <public_ip>
 cmd_vless_create() {
-  local base_url="${1:?usage: vless-create <base_url> <user> <pass> <dest> <server_name>}"
-  local user="$2" pass="$3" dest="$4" server_name="$5"
+  local base_url="${1:?usage: vless-create <base_url> <user> <pass> <dest> <server_name> <public_ip>}"
+  local user="$2" pass="$3" dest="$4" server_name="$5" public_ip="${6:?public_ip required}"
 
   # uTLS-отпечаток, который клиент имитирует в ClientHello. Проверено
   # вживую на реальном мобильном операторе: `chrome` (самый массовый и
@@ -537,6 +587,7 @@ cmd_vless_create() {
 
   local uuid; uuid=$(cat /proc/sys/kernel/random/uuid)
   local short_id; short_id=$(openssl rand -hex 4)
+  local sub_id;   sub_id=$(openssl rand -hex 8)
   # email клиента должен быть уникален в рамках панели (3x-ui отклоняет
   # повтор с "Duplicate email" — HTTP 200, success:false, curl -f это не
   # ловит). Статичный "client1" убивал каждый повторный прогон после
@@ -544,17 +595,23 @@ cmd_vless_create() {
   local client_email="client-${uuid:0:8}"
 
   local settings streamSettings sniffing
+  # subId на первом клиенте — чтобы сводка могла показать рабочий URL
+  # подписки сразу (без него подписка есть, но клиента в ней нет).
   settings=$(cat <<JSON
-{"clients":[{"id":"${uuid}","flow":"xtls-rprx-vision","email":"${client_email}","enable":true}],"decryption":"none"}
+{"clients":[{"id":"${uuid}","flow":"xtls-rprx-vision","email":"${client_email}","subId":"${sub_id}","enable":true}],"decryption":"none"}
 JSON
 )
+  # externalProxy — адрес, который 3x-ui подставляет в клиентские ссылки
+  # и подписку. Без него в host-режиме туда попадает адрес источника
+  # запроса (172.x.x.x от nginx-прокси) вместо публичного IP.
+  #
   # realitySettings.settings — xray его на инбаунде игнорирует, но 3x-ui
   # читает ИМЕННО отсюда, когда строит клиентские ссылки/QR/подписку
   # в панели. Без publicKey тут все ссылки из панели уходят с пустым
   # pbk= (та же поломка, что чинил парсинг x25519 выше, только со
   # стороны панели). fingerprint/serverName/spiderX дублируем сюда же.
   streamSettings=$(cat <<JSON
-{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${dest}","xver":0,"serverNames":["${server_name}"],"privateKey":"${priv}","shortIds":["${short_id}"],"settings":{"publicKey":"${pub}","fingerprint":"${fingerprint}","serverName":"","spiderX":"/"},"fingerprint":"${fingerprint}","spiderX":"/"}}
+{"network":"tcp","security":"reality","externalProxy":[{"forceTls":"same","dest":"${public_ip}","port":443,"remark":""}],"realitySettings":{"show":false,"dest":"${dest}","xver":0,"serverNames":["${server_name}"],"privateKey":"${priv}","shortIds":["${short_id}"],"settings":{"publicKey":"${pub}","fingerprint":"${fingerprint}","serverName":"","spiderX":"/"},"fingerprint":"${fingerprint}","spiderX":"/"}}
 JSON
 )
   sniffing='{"enabled":false,"destOverride":["http","tls"]}'
@@ -587,6 +644,7 @@ JSON
   printf 'VLESS_UUID=%s\n'      "$uuid"
   printf 'VLESS_PUBKEY=%s\n'    "$pub"
   printf 'VLESS_SHORTID=%s\n'   "$short_id"
+  printf 'VLESS_SUBID=%s\n'     "$sub_id"
   printf 'VLESS_DEST=%s\n'      "$dest"
   printf 'VLESS_SNI=%s\n'       "$server_name"
   printf 'VLESS_FP=%s\n'        "$fingerprint"
@@ -610,6 +668,7 @@ main() {
     compose-up-service)       cmd_compose_up_service "$@" ;;
     nginx-reload)             cmd_nginx_reload "$@" ;;
     xui-configure)            cmd_xui_configure "$@" ;;
+    xui-enable-sub)           cmd_xui_enable_sub "$@" ;;
     fakesite-install)         cmd_fakesite_install "$@" ;;
     vless-create)              cmd_vless_create "$@" ;;
     *) die "неизвестная подкоманда: '$sub'" ;;

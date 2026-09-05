@@ -44,6 +44,29 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
     }
+
+    # 3x-ui sub-сервер (порт 2096) — подписки и JSON-подписки по неочевидным
+    # путям. Домена нет, поэтому и панель, и подписка живут на :8443; QR из
+    # панели 3x-ui за прокси на нестандартном порту склеивает URL без пути и
+    # непригоден — рабочий URL подписки выводится в сводку установки.
+    location @@SUB_PATH@@ {
+        limit_req zone=panels burst=20 nodelay;
+        proxy_pass http://host.docker.internal:2096@@SUB_PATH@@;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    location @@SUB_JSON_PATH@@ {
+        limit_req zone=panels burst=20 nodelay;
+        proxy_pass http://host.docker.internal:2096@@SUB_JSON_PATH@@;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 # END VLESS
 # BEGIN OPENVPN
     location @@OVPN_ADMIN_PATH@@ {
