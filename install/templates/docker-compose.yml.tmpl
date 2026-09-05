@@ -126,7 +126,10 @@ services:
     networks:
       - ovpn-stack-vpn
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:80/ || exit 1"]
+      # порт 80 всегда 301-редиректит на :8443 (см. nginx.conf.tmpl) — обычный
+      # wget идёт за редиректом и там валит TLS-цепочку, потому что сертификат
+      # выписан на публичный IP, а не на 127.0.0.1, которым мы стучимся отсюда.
+      test: ["CMD-SHELL", "wget -q -O /dev/null --no-check-certificate http://127.0.0.1:80/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
