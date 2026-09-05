@@ -453,20 +453,17 @@ ok "nginx поднят, продление сертификата переклю
 VLESS_LINE=""
 if [[ "$MODE" == "vless" || "$MODE" == "all" ]]; then
   step "Шаг 5 — первый VLESS+Reality инбаунд"
-  DEST=""
-  while [[ -z "$DEST" ]]; do
-    read -rp "Домен для dest (TLS1.3+H2, не за CDN, см. README §9): " DEST
-    info "проверяю xray tls ping..."
-    tls_status="$(ssh_key "${INSTALLVPN} tls-ping '${DEST}'" | tail -1)"
-    if [[ "$tls_status" != "OK" ]]; then
-      warn "'$DEST' не прошёл проверку (TLS1.3+H2 через ALPN) — выбери другой домен"
-      DEST=""
-    fi
-  done
-  ok "dest подтверждён: $DEST"
+  read -rp "Домен для SNI (просто правдоподобное имя, к серверу не подключаемся — см. README §9): " DEST
+  [[ -n "$DEST" ]] || DEST="www.microsoft.com"
+
+  step "Локальный fakesite для dest (не внешний домен — см. README §9)"
+  FAKESITE_OUT="$(sudo_key "${INSTALLVPN} fakesite-install '${DEST}'")"
+  FAKESITE_DEST="$(awk -F= '/^FAKESITE_DEST=/{print $2}' <<<"$FAKESITE_OUT")"
+  [[ -n "$FAKESITE_DEST" ]] || die "fakesite-install не вернул адрес dest"
+  ok "fakesite поднят на ${FAKESITE_DEST}, SNI=${DEST}"
 
   XUI_BASE_URL="http://127.0.0.1:${XUI_PORT}${XUI_BASE_PATH}"
-  VLESS_OUT="$(ssh_key "${INSTALLVPN} vless-create '${XUI_BASE_URL}' '${XUI_ADMIN_USER}' '${XUI_ADMIN_PASS}' '${DEST}' '${DEST}'")"
+  VLESS_OUT="$(ssh_key "${INSTALLVPN} vless-create '${XUI_BASE_URL}' '${XUI_ADMIN_USER}' '${XUI_ADMIN_PASS}' '${FAKESITE_DEST}' '${DEST}'")"
   VLESS_UUID="$(awk -F= '/^VLESS_UUID=/{print $2}' <<<"$VLESS_OUT")"
   VLESS_PUBKEY="$(awk -F= '/^VLESS_PUBKEY=/{print $2}' <<<"$VLESS_OUT")"
   VLESS_SHORTID="$(awk -F= '/^VLESS_SHORTID=/{print $2}' <<<"$VLESS_OUT")"
