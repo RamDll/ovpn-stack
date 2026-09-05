@@ -18,6 +18,19 @@ log()  { printf '[bootstrap] %s\n' "$*" >&2; }
 die()  { printf '[bootstrap] ОШИБКА: %s\n' "$*" >&2; exit 1; }
 need_root() { [[ "$(id -u)" -eq 0 ]] || die "подкоманда '$1' требует root (запусти через sudo)"; }
 
+# копия файла в <file>.bak.<epoch> с обрезкой истории до последних 3 —
+# скрипт идемпотентный и запускается много раз, иначе в sshd_config.d/
+# накапливаются десятки .bak.* (безвредны для sshd, но мусор)
+backup_capped() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  cp -a "$file" "${file}.bak.$(date +%s)"
+  local old
+  mapfile -t old < <(ls -1t "${file}".bak.* 2>/dev/null | tail -n +4)
+  [[ ${#old[@]} -gt 0 ]] && rm -f -- "${old[@]}"
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # страховка «проверка перед разрушением» (принцип 4): перед любой правкой,
 # способной отрезать SSH (nftables, sshd), ставим self-timer на откат через
@@ -313,7 +326,7 @@ cmd_sshd_harden() {
   local port="${1:?usage: sshd-harden <new_port>}"
   mkdir -p "$STATE_DIR"
 
-  [[ -f "$DROPIN_SSHD" ]] && cp -a "$DROPIN_SSHD" "${DROPIN_SSHD}.bak.$(date +%s)"
+  backup_capped "$DROPIN_SSHD"
 
   cat > "$DROPIN_SSHD" <<EOF
 # управляется install/bootstrap.sh — не редактировать руками
@@ -327,7 +340,7 @@ EOF
   if socket_active; then
     log "обнаружена socket-активация ssh.socket (trixie) — правлю ListenStream"
     mkdir -p "$SOCKET_DROPIN_DIR"
-    [[ -f "$SOCKET_DROPIN" ]] && cp -a "$SOCKET_DROPIN" "${SOCKET_DROPIN}.bak.$(date +%s)"
+    backup_capped "$SOCKET_DROPIN"
     cat > "$SOCKET_DROPIN" <<EOF
 # управляется install/bootstrap.sh — не редактировать руками
 [Socket]

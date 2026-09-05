@@ -15,6 +15,12 @@ nginx/f2b-log/*
 # Рантайм-данные OpenVPN: PKI (приватные ключи!), CCD, база пользователей
 data/
 
+# Вывод установщика из install/ при запуске из git-чекаута (напр. /opt/ovpn-stack):
+# отрендеренные конфиги с секретами (privkey.pem, htpasswd) и state по серверам.
+# Секреты не в git — см. install/README.md, принцип 7.
+install-render/
+/state/
+
 # Build-артефакты
 *.log
 admin/ovpn-admin
