@@ -476,6 +476,14 @@ EOF
 cmd_vless_create() {
   local base_url="${1:?usage: vless-create <base_url> <user> <pass> <dest> <server_name>}"
   local user="$2" pass="$3" dest="$4" server_name="$5"
+
+  # uTLS-отпечаток, который клиент имитирует в ClientHello. Проверено
+  # вживую на реальном мобильном операторе: `chrome` (самый массовый и
+  # потому наиболее сигнатурно отслеживаемый) — хэндшейк проходит, но
+  # трафик не идёт; `firefox` при тех же остальных параметрах работает.
+  # Значение уходит и в инбаунд, и в ссылку клиенту (setup.sh) — держать
+  # синхронно. Менять здесь, если firefox тоже начнёт резать.
+  local fingerprint="firefox"
   base_url="${base_url%/}"
   local cookies; cookies=$(mktemp)
   # не trap ... RETURN: он не снимается сам и позже срабатывает повторно
@@ -541,7 +549,7 @@ cmd_vless_create() {
 JSON
 )
   streamSettings=$(cat <<JSON
-{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${dest}","xver":0,"serverNames":["${server_name}"],"privateKey":"${priv}","shortIds":["${short_id}"],"fingerprint":"chrome","spiderX":"/"}}
+{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${dest}","xver":0,"serverNames":["${server_name}"],"privateKey":"${priv}","shortIds":["${short_id}"],"fingerprint":"${fingerprint}","spiderX":"/"}}
 JSON
 )
   sniffing='{"enabled":false,"destOverride":["http","tls"]}'
@@ -576,6 +584,7 @@ JSON
   printf 'VLESS_SHORTID=%s\n'   "$short_id"
   printf 'VLESS_DEST=%s\n'      "$dest"
   printf 'VLESS_SNI=%s\n'       "$server_name"
+  printf 'VLESS_FP=%s\n'        "$fingerprint"
 }
 
 # ---------------------------------------------------------------------------
