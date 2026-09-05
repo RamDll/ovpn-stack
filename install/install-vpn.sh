@@ -426,9 +426,15 @@ cmd_fakesite_install() {
   mkdir -p "$certdir"
   if [[ ! -f "$certdir/fullchain.pem" ]]; then
     log "self-signed сертификат для '$domain' — виден только серверу самому себе, не реальным клиентам"
+    # -addext SAN обязателен: sing-box (в отличие от xray-core) проверяет
+    # сертификат даже после успешной REALITY-аутентификации, и современный
+    # Go отклоняет only-CN сертификаты — "x509: certificate relies on
+    # legacy Common Name field, use SANs instead". Проверено вживую:
+    # реальный клиент (Happ/sing-box) подключался, но трафик не шёл
+    # именно из-за этого.
     openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
       -keyout "$certdir/privkey.pem" -out "$certdir/fullchain.pem" \
-      -subj "/CN=${domain}" >/dev/null 2>&1
+      -subj "/CN=${domain}" -addext "subjectAltName=DNS:${domain}" >/dev/null 2>&1
   fi
 
   mkdir -p /var/www/ovpn-stack-fakesite
