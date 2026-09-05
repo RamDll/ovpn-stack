@@ -548,8 +548,13 @@ cmd_vless_create() {
 {"clients":[{"id":"${uuid}","flow":"xtls-rprx-vision","email":"${client_email}","enable":true}],"decryption":"none"}
 JSON
 )
+  # realitySettings.settings — xray его на инбаунде игнорирует, но 3x-ui
+  # читает ИМЕННО отсюда, когда строит клиентские ссылки/QR/подписку
+  # в панели. Без publicKey тут все ссылки из панели уходят с пустым
+  # pbk= (та же поломка, что чинил парсинг x25519 выше, только со
+  # стороны панели). fingerprint/serverName/spiderX дублируем сюда же.
   streamSettings=$(cat <<JSON
-{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${dest}","xver":0,"serverNames":["${server_name}"],"privateKey":"${priv}","shortIds":["${short_id}"],"fingerprint":"${fingerprint}","spiderX":"/"}}
+{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${dest}","xver":0,"serverNames":["${server_name}"],"privateKey":"${priv}","shortIds":["${short_id}"],"settings":{"publicKey":"${pub}","fingerprint":"${fingerprint}","serverName":"","spiderX":"/"},"fingerprint":"${fingerprint}","spiderX":"/"}}
 JSON
 )
   sniffing='{"enabled":false,"destOverride":["http","tls"]}'
