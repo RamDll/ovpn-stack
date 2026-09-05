@@ -1,6 +1,7 @@
 # Секреты и локальная конфигурация
 .env
 nginx/.htpasswd
+.claude/settings.local.json
 
 # TLS-сертификаты и ACME-challenge
 nginx/ssl/*

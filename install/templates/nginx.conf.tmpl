@@ -35,37 +35,47 @@ server {
     }
 
 # BEGIN VLESS
+    # Host — $http_host (не $host): 3x-ui строит абсолютные URL (ссылки клиентов,
+    # Profile-Web-Page-Url подписки, QR) из заголовка Host запроса; $host срезает
+    # порт, и URL уходит на :443 (REALITY-заглушка) вместо :8443. X-Forwarded-Proto
+    # нужен, чтобы 3x-ui выдавал https://, а не http://. См. MHSanaei/3x-ui#3289
+    # и install/NOTES.md.
     location @@XUI_BASE_PATH@@ {
         limit_req zone=panels burst=20 nodelay;
         proxy_pass http://host.docker.internal:@@XUI_PORT@@@@XUI_BASE_PATH@@;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
     }
 
     # 3x-ui sub-сервер (порт 2096) — подписки и JSON-подписки по неочевидным
-    # путям. Домена нет, поэтому и панель, и подписка живут на :8443; QR из
-    # панели 3x-ui за прокси на нестандартном порту склеивает URL без пути и
-    # непригоден — рабочий URL подписки выводится в сводку установки.
+    # путям. Домена нет, поэтому и панель, и подписка живут на :8443. Range/If-Range
+    # пробрасываем — приложения-обновляторы подписок шлют range-запросы.
     location @@SUB_PATH@@ {
         limit_req zone=panels burst=20 nodelay;
         proxy_pass http://host.docker.internal:2096@@SUB_PATH@@;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Range $http_range;
+        proxy_set_header If-Range $http_if_range;
     }
     location @@SUB_JSON_PATH@@ {
         limit_req zone=panels burst=20 nodelay;
         proxy_pass http://host.docker.internal:2096@@SUB_JSON_PATH@@;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Range $http_range;
+        proxy_set_header If-Range $http_if_range;
     }
 # END VLESS
 # BEGIN OPENVPN
@@ -83,8 +93,10 @@ server {
         # срезает location-префикс перед проксированием.
         proxy_pass http://openvpn:8080/;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 # END OPENVPN
 }

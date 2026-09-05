@@ -5,6 +5,92 @@
 
 ---
 
+## 2026-09-06 — «неправильные ссылки на подписки» = баг nginx `$host`
+
+Проверено на живом `REDACTED-IP` (3x-ui v3.4.2, `ghcr.io/mhsanaei/3x-ui:v3.4.2`)
+curl'ом по реальным эндпоинтам + чтением `x-ui.db` и `docker logs` nginx.
+
+### Что оказалось на самом деле
+
+Раньше NOTES утверждали, что QR/«копировать» в панели за прокси на `:8443`
+«склеивают URL без пути». **Это не воспроизвелось.** В v3.4.2 фронтенд
+(`frontend/src/pages/clients/SubLinksModal.tsx`, `ClientQrModal.tsx`) строит
+ссылку клиента буквально как `subURI + subId`, и показывает её только если
+`subURI` непустой. Пока `xui-enable-sub` прописывает `subURI` (полный
+`https://<ip>:8443<subPath>`), кнопка и QR дают корректный полный URL.
+
+Реальная поломка — в другом: 3x-ui собирает **абсолютные** URL (ссылки в
+самой подписке, заголовок `Profile-Web-Page-Url`, request-derived база в
+`SubService.ResolveRequest` / `BuildURLs`) из заголовка `Host` запроса и
+`X-Forwarded-Proto`. Живой `nginx.conf` слал `proxy_set_header Host $host`,
+а `$host` **срезает порт**. Результат по curl:
+
+    Profile-Web-Page-Url: https://REDACTED-IP/sub-.../<subId>   ← без :8443
+
+то есть ссылка на страницу подписки указывала на `:443` (REALITY-заглушка).
+С `Host: <ip>:8443` вручную заголовок сразу правильный. Панельный `location`
+к тому же не слал `X-Forwarded-Proto` → scheme мог выйти `http`.
+
+Апстрим-обсуждение и рекомендация — [`MHSanaei/3x-ui#3289`](https://github.com/MHSanaei/3x-ui/issues/3289)
+и доки [Reverse Proxy](https://docs.sanaei.dev/docs/operations/reverse-proxy/):
+`Host $http_host`, `X-Forwarded-Proto`, проброс `Range`/`If-Range`.
+`proxy_redirect off` из того обсуждения **не берём** — там `proxy_pass`
+без пути + `rewrite`, а у нас `proxy_pass` с базовым путём, где default
+`proxy_redirect` как раз нужен, чтобы не утёк upstream-хост в `Location`.
+
+### Фикс (в этом коммите)
+
+`templates/nginx.conf.tmpl`, все `location` секций VLESS + OpenVPN:
+- `Host $host` → `Host $http_host` (сохраняет `:8443`);
+- `X-Forwarded-Proto $scheme` добавлен в панельный и ovpn-admin блоки;
+- `Range`/`If-Range` проброшены в sub- и json-sub-блоки.
+
+Проверено на живом сервере: до фикса `curl` подписки отдавал
+`Profile-Web-Page-Url: https://REDACTED-IP/sub-…` (без порта), после
+патча `Host $http_host` + reload nginx — `https://REDACTED-IP:8443/sub-…`.
+
+Сам контент подписки был корректен и до фикса: `externalProxy` даёт
+`vless://…@<public_ip>:443`, `fp=firefox`, `pbk`/`sid`/`sni` на месте;
+Happ на Android тянул подписку с кодом 200 (видно в `docker logs nginx`).
+
+### Решили ли это в свежих 3x-ui? — Нет, механизм тот же
+
+v3.5 → v3.7 (v3.6.0 «Subscription Correctness»). `SubService.ResolveRequest`
+всё так же строит абсолютные URL как `X-Forwarded-Host || Request.Host` +
+`X-Forwarded-Proto`. То есть nginx с `Host $host` (без порта) даёт кривой
+URL и на v3.7 — лечится только `$http_host`, либо `X-Forwarded-Host` с
+портом, либо `subURI`. Кнопка/QR в панели по-прежнему `subURI + subId`.
+
+Что **добавили** в v3.6.0 (PR #6135, `internal/sub/forwarded_trust.go`):
+настройку **`trustedProxyCIDRs`** (дефолт `127.0.0.1/32,::1/128`). Если её
+увести от дефолта, 3x-ui доверяет `X-Forwarded-*` только когда
+`RemoteAddr` прокси попадает в эти CIDR, иначе **игнорирует** форвард-хедеры
+и берёт хост запроса + пишет варнинг («set subURI, or add the proxy…»).
+Пока значение = дефолту, хедеры принимаются от кого угодно (обратная
+совместимость). **Для нас:** nginx-контейнер стучится к host-mode 3x-ui с
+адреса docker-моста (172.x), не с loopback. Если когда-нибудь тронем
+`trustedProxyCIDRs` — вписать туда `172.16.0.0/12` (или просто
+полагаться на `subURI`, он у нас и так выставлен).
+
+Прочие sub-фиксы v3.6.0 (Clash YAML-скаляры, VLESS flow в JSON, дубль
+fingerprint в externalProxy tlsSettings, имена внешних ссылок) — общая
+корректность, нашей проблемы не касаются.
+
+### Ещё замечено на тест-сервере (не баг кода)
+
+- `subJsonEnable`/`subJsonURI` в `x-ui.db` **не выставлены** → `/json-…/`
+  отдаёт 404, панель прячет JSON-ссылки. `cmd_xui_enable_sub` их пишет —
+  на этом сервере правили руками до того. Чистый `setup.sh` поставит.
+- `spx` (spiderX) в ссылке рандомится на каждый запрос — так устроен
+  3x-ui v3.4.2, не поломка.
+
+### Доступ к тест-серверу
+
+sshd захардён (`bootstrap.sh sshd-harden`): порт **28848**, `PermitRootLogin no`,
+рабочий юзер — `ramdll` (группы `sudo`, `docker`). Не `root` на 22, как можно
+подумать. Копия `x-ui.db` осталась в `~/xui-inspect/` на сервере (там `secret`,
+`panelGuid` — можно удалить).
+
 ## 2026-09-05 — телефон не подключался по VLESS
 
 Диагностика велась на тестовом сервере `REDACTED-IP` (Debian 13),
