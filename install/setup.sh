@@ -467,8 +467,10 @@ if [[ "$MODE" == "vless" || "$MODE" == "all" ]]; then
   VLESS_UUID="$(awk -F= '/^VLESS_UUID=/{print $2}' <<<"$VLESS_OUT")"
   VLESS_PUBKEY="$(awk -F= '/^VLESS_PUBKEY=/{print $2}' <<<"$VLESS_OUT")"
   VLESS_SHORTID="$(awk -F= '/^VLESS_SHORTID=/{print $2}' <<<"$VLESS_OUT")"
+  VLESS_FP="$(awk -F= '/^VLESS_FP=/{print $2}' <<<"$VLESS_OUT")"
+  VLESS_FP="${VLESS_FP:-firefox}"   # см. install-vpn.sh: chrome режет реальный оператор
   if [[ -n "$VLESS_UUID" && -n "$VLESS_PUBKEY" ]]; then
-    VLESS_LINE="vless://${VLESS_UUID}@${IP}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${DEST}&fp=chrome&pbk=${VLESS_PUBKEY}&sid=${VLESS_SHORTID}&type=tcp#ovpn-stack"
+    VLESS_LINE="vless://${VLESS_UUID}@${IP}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${DEST}&fp=${VLESS_FP}&pbk=${VLESS_PUBKEY}&sid=${VLESS_SHORTID}&spx=%2F&type=tcp#ovpn-stack"
     ok "VLESS-инбаунд создан"
   else
     warn "инбаунд уже существовал (или вывод не распознан) — открой панель 3x-ui и проверь руками"

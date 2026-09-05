@@ -476,6 +476,14 @@ EOF
 cmd_vless_create() {
   local base_url="${1:?usage: vless-create <base_url> <user> <pass> <dest> <server_name>}"
   local user="$2" pass="$3" dest="$4" server_name="$5"
+
+  # uTLS-отпечаток, который клиент имитирует в ClientHello. Проверено
+  # вживую на реальном мобильном операторе: `chrome` (самый массовый и
+  # потому наиболее сигнатурно отслеживаемый) — хэндшейк проходит, но
+  # трафик не идёт; `firefox` при тех же остальных параметрах работает.
+  # Значение уходит и в инбаунд, и в ссылку клиенту (setup.sh) — держать
+  # синхронно. Менять здесь, если firefox тоже начнёт резать.
+  local fingerprint="firefox"
   base_url="${base_url%/}"
   local cookies; cookies=$(mktemp)
   # не trap ... RETURN: он не снимается сам и позже срабатывает повторно
@@ -516,9 +524,16 @@ cmd_vless_create() {
   keys=$(docker exec 3x-ui /app/bin/xray-linux-amd64 x25519 2>/dev/null || \
          docker exec 3x-ui /app/xray x25519 2>/dev/null || \
          docker exec 3x-ui xray x25519 2>/dev/null || true)
-  local priv; priv=$(grep -i 'Private' <<<"$keys" | awk '{print $NF}')
-  local pub;  pub=$(grep -i 'Public'  <<<"$keys" | awk '{print $NF}')
-  [[ -n "$priv" && -n "$pub" ]] || die "не удалось сгенерировать x25519-ключи Reality"
+  # xray-core >= 25.x переименовал вывод `x25519`: публичный ключ теперь
+  # печатается как "Password:", а не "Public key:" (в запиненной 3x-ui
+  # v3.4.2 это xray 25.8.29). Старый `grep 'Public'` возвращал пустую
+  # строку -> инбаунд создавался, но ссылка на клиента уходила с пустым
+  # pbk= и телефон не проходил Reality-хендшейк. Матчим оба формата.
+  local priv; priv=$(grep -iE 'private' <<<"$keys" | awk '{print $NF}' | head -1)
+  local pub;  pub=$(grep -iE 'password|public' <<<"$keys" | awk '{print $NF}' | head -1)
+  [[ -n "$priv" && -n "$pub" ]] || die "не разобрал вывод 'xray x25519' (формат сменился?): ${keys:-<пусто>}"
+  # pbk — 43 символа base64url; если тут не так, ссылка всё равно будет битой
+  [[ "$pub" =~ ^[A-Za-z0-9_-]{43}$ ]] || die "публичный ключ Reality не похож на base64url-x25519: '$pub'"
 
   local uuid; uuid=$(cat /proc/sys/kernel/random/uuid)
   local short_id; short_id=$(openssl rand -hex 4)
@@ -534,7 +549,7 @@ cmd_vless_create() {
 JSON
 )
   streamSettings=$(cat <<JSON
-{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${dest}","xver":0,"serverNames":["${server_name}"],"privateKey":"${priv}","shortIds":["${short_id}"],"fingerprint":"chrome","spiderX":"/"}}
+{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${dest}","xver":0,"serverNames":["${server_name}"],"privateKey":"${priv}","shortIds":["${short_id}"],"fingerprint":"${fingerprint}","spiderX":"/"}}
 JSON
 )
   sniffing='{"enabled":false,"destOverride":["http","tls"]}'
@@ -569,6 +584,7 @@ JSON
   printf 'VLESS_SHORTID=%s\n'   "$short_id"
   printf 'VLESS_DEST=%s\n'      "$dest"
   printf 'VLESS_SNI=%s\n'       "$server_name"
+  printf 'VLESS_FP=%s\n'        "$fingerprint"
 }
 
 # ---------------------------------------------------------------------------
