@@ -65,8 +65,8 @@ sudo bash install.sh
 
 ```
 ovpn-stack/
-├── install.sh                 установщик на свежий сервер (Debian/Ubuntu)
-├── install/                   ⚠️ experimental — альтернативный установщик (см. install/README.md)
+├── install.sh                 установщик на месте: OpenVPN + ovpn-admin + nginx (запускать на сервере)
+├── install/                   установщик с домашней машины: + VLESS Reality, SSH-хардненинг (см. install/README.md)
 ├── docker-compose.yaml        стек: openvpn + ovpn-admin + nginx
 ├── .env.example               шаблон секретов (скопировать в .env)
 ├── .github/                   CI (docker compose smoke test) + конфиг Dependabot
