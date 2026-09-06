@@ -38,7 +38,7 @@ usage() {
 
 Использование:
   $0 [--vless|--openvpn|--all] [--ip <addr>] [--user <name>] \\
-     [--ssh-port <port>] [--sni <domain>]
+     [--ssh-port <port>] [--sni <domain>] [--staging]
 
 Флаги:
   --vless          режим: только VLESS Reality
@@ -49,6 +49,8 @@ usage() {
   --ssh-port <p>   порт SSH после хардненинга (иначе случайный 20000-60000)
   --sni <domain>   домен для REALITY SNI (иначе спросит; при повторном
                    прогоне берётся из state.env)
+  --staging        ACME staging Let's Encrypt — серт НЕ доверенный браузером,
+                   но высокие лимиты: для повторных тест-прогонов установщика
   -h, --help       эта справка
 
 root-пароль всегда вводится интерактивно; пароль пользователя — тоже
@@ -64,6 +66,7 @@ IP=""
 SSH_USER_ARG=""
 SSH_PORT_ARG=""
 SNI_ARG=""
+ACME_STAGING=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --vless)    MODE="vless" ;;
@@ -73,6 +76,7 @@ while [[ $# -gt 0 ]]; do
     --user)     SSH_USER_ARG="${2:?}"; shift ;;
     --ssh-port) SSH_PORT_ARG="${2:?}"; shift ;;
     --sni)      SNI_ARG="${2:?}"; shift ;;
+    --staging)  ACME_STAGING="staging" ;;
     -h|--help)  usage; exit 0 ;;
     *) die "неизвестный флаг: $1 (см. --help)" ;;
   esac
@@ -445,7 +449,7 @@ ok "сервисы подняты"
 
 step "Сертификат (Let's Encrypt на IP, acme.sh)"
 sudo_key "${INSTALLVPN} acme-install"
-sudo_key "${INSTALLVPN} cert-issue '${IP}'"
+sudo_key "${INSTALLVPN} cert-issue '${IP}' '' '${ACME_STAGING}'"
 ok "сертификат выпущен (standalone, порт 80)"
 
 # -------------------------------------------------------------------------
@@ -478,7 +482,7 @@ step "Рендер и запуск nginx (последним — сертифи�
 ssh_key "${INSTALLVPN} render-nginx '${MODE}' '${XUI_BASE_PATH}' '${XUI_PORT}' '${OVPN_ADMIN_PATH}' '${SUB_PATH}' '${SUB_JSON_PATH}'"
 ssh_key "${INSTALLVPN} compose-up-service nginx"
 ssh_key "${INSTALLVPN} nginx-reload"
-sudo_key "${INSTALLVPN} cert-switch-to-webroot '${IP}'"
+sudo_key "${INSTALLVPN} cert-switch-to-webroot '${IP}' '${ACME_STAGING}'"
 ok "nginx поднят, продление сертификата переключено на webroot"
 
 # ===========================================================================
@@ -574,6 +578,7 @@ save_state
     echo
   fi
   echo "== Напоминания =="
+  [[ -n "$ACME_STAGING" ]] && echo "- ВНИМАНИЕ: сертификат из ACME STAGING — браузер покажет «не защищено». Тестовый прогон, для боевого убери --staging и перевыпусти."
   echo "- автообновления с ребутом каждую ночь в 04:00 (Automatic-Reboot-WithUsers=false)"
   echo "- IP-сертификат живёт ~6 суток, продление настроено (systemd-таймер, дважды в день)"
   echo "- при полной потере SSH-доступа остаётся консоль в панели управления сервером"
