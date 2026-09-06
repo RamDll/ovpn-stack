@@ -218,15 +218,23 @@ valid_username() { [[ "$1" =~ ^[a-z_][a-z0-9_-]*$ ]] && [[ ${#1} -le 32 ]]; }
 if [[ -z "$SSH_USER" ]]; then
   candidate="$(whoami | tr '[:upper:]' '[:lower:]')"
   valid_username "$candidate" || candidate=""
-  read -rp "Имя пользователя на сервере${candidate:+ [$candidate]}: " SSH_USER
+  info "На сервере будет создан ОТДЕЛЬНЫЙ sudo-пользователь для управления"
+  info "(вход по ключу, root после этого закрывается)."
+  if [[ -n "$candidate" ]]; then
+    info "Enter — назвать его как вас на этой машине ($candidate), либо впишите другое имя."
+    read -rp "Имя пользователя на сервере [$candidate]: " SSH_USER
+  else
+    read -rp "Имя пользователя на сервере (латиница, с буквы/подчёркивания): " SSH_USER
+  fi
   SSH_USER="${SSH_USER:-$candidate}"
 fi
 while ! valid_username "${SSH_USER:-}"; do
-  read -rp "Имя пользователя (латиница, ^[a-z_][a-z0-9_-]*\$): " SSH_USER
+  read -rp "Некорректное имя. Латиница, цифры, - и _, с буквы или _, до 32 символов: " SSH_USER
 done
 
 if [[ -z "$USER_PASSWORD" ]]; then
-  read -rsp "Пароль пользователя $SSH_USER для sudo (Enter — сгенерировать): " USER_PASSWORD; echo
+  info "Пароль этого пользователя нужен только для sudo на сервере."
+  read -rsp "Пароль для $SSH_USER (Enter — сгенерировать надёжный): " USER_PASSWORD; echo
   if [[ -n "$USER_PASSWORD" && ${#USER_PASSWORD} -lt 8 ]]; then
     warn "пароль короче 8 символов — на всякий случай генерирую вместо него"
     USER_PASSWORD=""
