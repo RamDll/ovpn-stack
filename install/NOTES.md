@@ -5,6 +5,36 @@
 
 ---
 
+## 2026-09-06 — режимы `--vless` и `--openvpn` проверены по отдельности ✅
+
+Чистые прогоны на переустановленном `REDACTED-IP` с флагом `--staging`
+(ACME staging — прод-лимит «5 сертов на IP / 168ч» сожгли реинсталлами;
+staging-серт не доверенный браузером, но флоу проверяет).
+
+**`--vless` (без OpenVPN):**
+- контейнеры: только `3x-ui` + `nginx`;
+- nftables: SSH + 443 + 2053/2096 (docker-only) + 80 + 8443, **без udp**;
+- nginx: только `/x-…/`, `/sub-…/`, `/json-…/` — нет `/ovpn-…/`;
+- сводка: нет блока ovpn-admin, нет строки OpenVPN в портах;
+- 3x-ui 200, подписка raw+JSON 200, `Profile-Web-Page-Url` с `:8443`;
+- VLESS+REALITY трафик loopback-клиентом — **6/6**.
+
+**`--openvpn` (без VLESS):**
+- контейнеры: `openvpn` + `ovpn-admin` + `nginx` — **нет `3x-ui`**;
+- nftables: SSH + 80 + 8443 + `<udp>` — **нет 443/2053/2096**;
+- nginx: только `/ovpn-…/` с `auth_basic`; `:443` снаружи закрыт (`curl` → 000);
+- ovpn-admin: 401 без auth, 200 с Basic Auth;
+- `ovpn-admin` API создаёт юзера, отдаёт `.ovpn` с `remote <ip> <udp> udp`;
+- OpenVPN-туннель: `openvpn --config` поднимает `tun0` = `10.1.0.2/24`,
+  `redirect-gateway` ставит сплит-роут, MASQUERADE в контейнере считает
+  пакеты (данные форвардятся). Egress-IP по self-loop с сервера не
+  проверить (клиент и сервер — один хост, `redirect-gateway` зацикливает
+  маршрут до самого VPN-эндпоинта) — но control+data plane работают.
+
+Мелочь, пофикшено: сводка печатала «Xray/3x-ui: 443/tcp» в блоке портов
+безусловно, даже в `--openvpn`-режиме где Xray нет и 443 закрыт →
+теперь под `[[ -n "$XUI_BASE_PATH" ]]`.
+
 ## 2026-09-06 — эталонный чистый прогон `setup.sh --all` ✅
 
 Первый полный прогон с нуля на переустановленном `REDACTED-IP`
