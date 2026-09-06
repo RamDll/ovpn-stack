@@ -377,15 +377,31 @@ EOF
 # ---------------------------------------------------------------------------
 # compose up
 # ---------------------------------------------------------------------------
+# `docker compose up` тянет образы с ghcr.io/docker.io — на плохом маршруте
+# (часто IPv6 к ghcr) это ловит "connection reset by peer" на середине
+# слоя и роняет весь прогон. Ретраим: уже скачанные слои закешированы,
+# сборка ovpn-admin тоже кешируется, повтор идёт быстро.
+compose_up_retry() {
+  local try
+  for try in 1 2 3 4; do
+    if ( cd "$RENDER_DIR" && docker compose -f docker-compose.yml up -d --build "$@" ); then
+      return 0
+    fi
+    (( try == 4 )) && die "docker compose up не прошёл после 4 попыток (сеть до ghcr.io/docker.io?)"
+    log "compose up: попытка $try не удалась (сеть?), жду 15с и повторяю..."
+    sleep 15
+  done
+}
+
 cmd_compose_up() {
   local svc="${1:-}"
-  ( cd "$RENDER_DIR" && docker compose -f docker-compose.yml up -d --build ${svc:+"$svc"} )
+  compose_up_retry ${svc:+"$svc"}
   log "compose-up готово"
 }
 
 cmd_compose_up_service() {
   local svc="${1:?usage: compose-up-service <service>}"
-  ( cd "$RENDER_DIR" && docker compose -f docker-compose.yml up -d --build "$svc" )
+  compose_up_retry "$svc"
 }
 
 # nginx-reload — `docker compose up` не трогает уже запущенный контейнер,
