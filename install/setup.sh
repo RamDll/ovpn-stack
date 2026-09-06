@@ -115,15 +115,7 @@ install_optional_dep() {
     apt-get) sudo apt-get update -qq && sudo apt-get install -y "$pkg" ;;
     pacman)  sudo pacman -Sy --noconfirm "$pkg" ;;
     dnf)     sudo dnf install -y "$pkg" ;;
-    brew)
-      # sshpass убрали из homebrew-core (политика против автоматизации
-      # парольного SSH) — только через сторонний tap
-      if [[ "$bin" == "sshpass" ]]; then
-        brew install esolitos/ipa/sshpass
-      else
-        brew install "$pkg"
-      fi
-      ;;
+    brew)    brew install "$pkg" ;;
   esac
 
   if command -v "$bin" >/dev/null 2>&1; then
@@ -133,10 +125,17 @@ install_optional_dep() {
     return 1
   fi
 }
-install_optional_dep sshpass sshpass "чтобы не вводить root-пароль по нескольку раз при первом подключении" || true
-install_optional_dep qrencode qrencode "чтобы показать QR-код VLESS-ссылки в конце" || true
+# root-пароль первого подключения скармливается ssh через SSH_ASKPASS
+# (см. ssh_root ниже) — sshpass больше не нужен. OpenSSH >= 8.4 для
+# SSH_ASKPASS_REQUIRE=force; на старее — фолбэк на ручной ввод N раз.
+SSH_ASKPASS_OK=0
+if ssh_ver="$(ssh -V 2>&1)" && [[ "$ssh_ver" =~ OpenSSH_([0-9]+)\.([0-9]+) ]]; then
+  if (( BASH_REMATCH[1] > 8 || (BASH_REMATCH[1] == 8 && BASH_REMATCH[2] >= 4) )); then
+    SSH_ASKPASS_OK=1
+  fi
+fi
 
-HAVE_SSHPASS=0; command -v sshpass >/dev/null 2>&1 && HAVE_SSHPASS=1
+install_optional_dep qrencode qrencode "чтобы показать QR-код VLESS-ссылки в конце" || true
 HAVE_QRENCODE=0; command -v qrencode >/dev/null 2>&1 && HAVE_QRENCODE=1
 
 # ---------------------------------------------------------------------------
@@ -272,21 +271,29 @@ else
   info "host key: $(ssh-keygen -lf "$HOSTKEY_RAW" | awk '{print $2}')"
   cp "$HOSTKEY_RAW" "$KNOWN_HOSTS"
 
-  ssh_root() {
-    if [[ "$HAVE_SSHPASS" -eq 1 ]]; then
-      sshpass -p "$ROOT_PASSWORD" ssh -o "UserKnownHostsFile=$KNOWN_HOSTS" -o StrictHostKeyChecking=yes -p 22 "root@$IP" "$@"
-    else
-      ssh -o "UserKnownHostsFile=$KNOWN_HOSTS" -o StrictHostKeyChecking=yes -p 22 "root@$IP" "$@"
-    fi
+  # SSH_ASKPASS-хелпер: ssh берёт root-пароль из него (по разу на вызов,
+  # без промптов). Пароль в файле НЕ лежит — хелпер печатает переменную
+  # окружения, которую мы экспортим только на время первого подключения
+  # и снимаем сразу после заливки ключа.
+  ASKPASS="$STATE_DIR/.askpass"
+  trap 'rm -f "${ASKPASS:-}" 2>/dev/null || true' EXIT
+  if [[ "$SSH_ASKPASS_OK" -eq 1 ]]; then
+    umask 077
+    printf '#!/bin/sh\nprintf "%%s\\n" "$OVPN_STACK_SSH_PW"\n' > "$ASKPASS"
+    chmod 700 "$ASKPASS"
+    export OVPN_STACK_SSH_PW="$ROOT_PASSWORD"
+    export SSH_ASKPASS="$ASKPASS" SSH_ASKPASS_REQUIRE=force
+  else
+    warn "OpenSSH старше 8.4 — root-пароль спросят вручную несколько раз подряд"
+  fi
+  ssh_root() { ssh -o "UserKnownHostsFile=$KNOWN_HOSTS" -o StrictHostKeyChecking=yes -p 22 "root@$IP" "$@"; }
+  scp_root() { scp -o "UserKnownHostsFile=$KNOWN_HOSTS" -o StrictHostKeyChecking=yes -P 22 "$@"; }
+
+  # снять пароль из окружения и удалить хелпер, как только он больше не нужен
+  drop_root_pw() {
+    unset OVPN_STACK_SSH_PW SSH_ASKPASS SSH_ASKPASS_REQUIRE
+    rm -f "$ASKPASS" 2>/dev/null || true
   }
-  scp_root() {
-    if [[ "$HAVE_SSHPASS" -eq 1 ]]; then
-      sshpass -p "$ROOT_PASSWORD" scp -o "UserKnownHostsFile=$KNOWN_HOSTS" -o StrictHostKeyChecking=yes -P 22 "$@"
-    else
-      scp -o "UserKnownHostsFile=$KNOWN_HOSTS" -o StrictHostKeyChecking=yes -P 22 "$@"
-    fi
-  }
-  [[ "$HAVE_SSHPASS" -eq 0 ]] && warn "sshpass не найден — пароль root спросят вручную несколько раз подряд"
 
   info "проверяю вход по паролю..."
   ssh_root true >/dev/null || die "не удалось войти по root-паролю"
@@ -363,6 +370,7 @@ else
     die "вход по ключу не прошёл. root и пароль НЕ тронуты — почини вручную и перезапусти."
   fi
   ok "вход по ключу работает"
+  drop_root_pw; unset ROOT_PASSWORD   # дальше только ключевая аутентификация
 
   if ! sudo_key true; then
     die "sudo у $SSH_USER не работает. root и пароль НЕ тронуты — это блокер, см. README §6 п.4."
