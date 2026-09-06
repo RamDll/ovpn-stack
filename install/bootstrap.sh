@@ -139,7 +139,12 @@ ensure_swap() {
   log "swap подключён: $(swapon --show=NAME,SIZE --noheadings 2>/dev/null | tr '\n' ' ')"
 }
 
-DROPIN_SSHD=/etc/ssh/sshd_config.d/99-ovpn-stack.conf
+# префикс 00- — чтобы наш drop-in читался ПЕРВЫМ: для большинства
+# директив sshd берёт первое вхождение, а cloud-init кладёт
+# 50-cloud-init.conf с «PasswordAuthentication yes», который иначе
+# побеждает. Старое имя (99-) сносим при харднинге и откате.
+DROPIN_SSHD=/etc/ssh/sshd_config.d/00-ovpn-stack.conf
+DROPIN_SSHD_LEGACY=/etc/ssh/sshd_config.d/99-ovpn-stack.conf
 SOCKET_DROPIN_DIR=/etc/systemd/system/ssh.socket.d
 SOCKET_DROPIN=$SOCKET_DROPIN_DIR/99-ovpn-stack.conf
 NFTABLES_CONF=/etc/nftables.conf
@@ -441,6 +446,7 @@ cmd_sshd_harden() {
   mkdir -p "$STATE_DIR"
 
   backup_capped "$DROPIN_SSHD"
+  rm -f "$DROPIN_SSHD_LEGACY"
 
   cat > "$DROPIN_SSHD" <<EOF
 # управляется install/bootstrap.sh — не редактировать руками
@@ -450,6 +456,19 @@ PubkeyAuthentication yes
 PermitRootLogin no
 KbdInteractiveAuthentication no
 EOF
+
+  # Заглушаем конкурирующие «yes» в остальных конфигах. sshd берёт первое
+  # вхождение директивы, а cloud-init/образ провайдера часто кладёт
+  # 50-cloud-init.conf с «PasswordAuthentication yes» или правит сам
+  # /etc/ssh/sshd_config — тогда наш drop-in игнорируется даже с 00-.
+  local cf
+  for cf in /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf; do
+    [[ -f "$cf" && "$cf" != "$DROPIN_SSHD" ]] || continue
+    grep -qiE '^[[:space:]]*(PasswordAuthentication|KbdInteractiveAuthentication|ChallengeResponseAuthentication|PermitRootLogin)[[:space:]]+yes' "$cf" || continue
+    backup_capped "$cf"
+    sed -ri 's/^([[:space:]]*(PasswordAuthentication|KbdInteractiveAuthentication|ChallengeResponseAuthentication|PermitRootLogin)[[:space:]]+yes.*)/# \1  # off: ovpn-stack/I' "$cf"
+    log "заглушил доступ по паролю/root в $cf"
+  done
 
   if socket_active; then
     log "обнаружена socket-активация ssh.socket (trixie) — правлю ListenStream"
@@ -497,6 +516,21 @@ EOF
     die "sshd не поднялся на новом порту, откат выполнен"
   fi
 
+  # авторитетная проверка: что реально видит sshd после всех drop-in
+  local sshd_eff pw_eff root_eff
+  sshd_eff="$(sshd -T 2>/dev/null || true)"
+  pw_eff="$(awk '$1=="passwordauthentication"{print $2}' <<<"$sshd_eff")"
+  root_eff="$(awk '$1=="permitrootlogin"{print $2}' <<<"$sshd_eff")"
+  if [[ "$pw_eff" != "no" || "$root_eff" == "yes" ]]; then
+    log "ВНИМАНИЕ: sshd -T показывает passwordauthentication=$pw_eff permitrootlogin=$root_eff —"
+    log "доступ по паролю НЕ закрыт. Конкурирующие строки (закомментируй вручную):"
+    grep -rniE '^[[:space:]]*(PasswordAuthentication|PermitRootLogin)[[:space:]]+(yes|prohibit-password)' \
+      /etc/ssh/sshd_config /etc/ssh/sshd_config.d/ 2>/dev/null | grep -vF "$DROPIN_SSHD" \
+      | while read -r l; do log "  $l"; done || true
+  else
+    log "sshd -T подтверждает: доступ по паролю выключен, root закрыт"
+  fi
+
   log "sshd-harden готово, новый порт $port слушает локально — жду sshd-confirm с домашнего ПК (иначе откат через 5 мин)"
 }
 
@@ -505,8 +539,14 @@ cmd_sshd_confirm() { cancel_safety_rollback sshd; }
 cmd_sshd_rollback() {
   need_root sshd-rollback
   log "откатываю правки sshd к дефолту"
-  rm -f "$DROPIN_SSHD"
+  rm -f "$DROPIN_SSHD" "$DROPIN_SSHD_LEGACY"
   rm -f "$SOCKET_DROPIN"
+  # восстанавливаем самый свежий бэкап конфигов, которые правил sed-ом
+  local cf bak
+  for cf in /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf; do
+    bak="$(ls -1t "${cf}".bak.* 2>/dev/null | head -1)" || true
+    [[ -n "$bak" && -f "$bak" ]] && { cp -a "$bak" "$cf"; log "восстановил $cf из $bak"; }
+  done
   systemctl daemon-reload
   systemctl restart ssh.socket 2>/dev/null || true
   systemctl restart ssh.service 2>/dev/null || systemctl restart sshd.service 2>/dev/null || systemctl restart ssh 2>/dev/null || true

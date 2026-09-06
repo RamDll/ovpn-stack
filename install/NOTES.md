@@ -5,6 +5,40 @@
 
 ---
 
+## 2026-09-06 — после харднинга остался вход по паролю (cloud-init)
+
+Коллега прогнал установку начисто: всё работает, но по SSH к
+sudo-пользователю **по-прежнему пускало по паролю**, хотя drop-in
+`99-ovpn-stack.conf` ставил `PasswordAuthentication no`.
+
+Причина — порядок чтения конфигов sshd. `/etc/ssh/sshd_config` на Debian
+начинается с `Include /etc/ssh/sshd_config.d/*.conf`, файлы читаются в
+алфавитном порядке, и для `PasswordAuthentication` (как и большинства
+директив) выигрывает **первое** вхождение. Образ провайдера с cloud-init
+кладёт `/etc/ssh/sshd_config.d/50-cloud-init.conf` со строкой
+`PasswordAuthentication yes` — она идёт раньше `99-ovpn-stack.conf`, наш
+`no` не применяется. `Port` и `PermitRootLogin` при этом сработали
+(конкурирующих строк раньше по списку не было), поэтому проблему не
+заметили: коллега зашёл на новый порт по ключу и решил, что всё ок.
+
+Фикс (`cmd_sshd_harden`):
+- drop-in переименован в `00-ovpn-stack.conf` — читается первым, наш
+  `PasswordAuthentication no` побеждает cloud-init;
+- дополнительно скрипт проходит по `/etc/ssh/sshd_config` и всем
+  `sshd_config.d/*.conf` и комментирует `PasswordAuthentication yes` /
+  `KbdInteractiveAuthentication yes` / `ChallengeResponseAuthentication
+  yes` / `PermitRootLogin yes` (с бэкапом, идемпотентно);
+- после рестарта — `sshd -T` как авторитетная проверка эффективного
+  конфига; если `passwordauthentication` всё ещё `yes`, в лог печатаются
+  конкурирующие строки;
+- `sshd-rollback` сносит и `00-`, и старый `99-`, и восстанавливает
+  тронутые sed-ом конфиги из свежего `.bak`.
+
+Старое имя `99-ovpn-stack.conf` с прошлых установок удаляется при
+харднинге и откате.
+
+---
+
 ## 2026-09-06 — режимы `--vless` и `--openvpn` проверены по отдельности ✅
 
 Чистые прогоны на переустановленном `REDACTED-IP` с флагом `--staging`
@@ -182,7 +216,7 @@ fingerprint в externalProxy tlsSettings, имена внешних ссылок
 `.claude/settings.local.json` (gitignore).
 
 - sshd: `PermitRootLogin no`, `PasswordAuthentication no`, случайный
-  порт 20000–60000 (drop-in `99-ovpn-stack.conf`; trixie — правится и
+  порт 20000–60000 (drop-in `00-ovpn-stack.conf`; trixie — правится и
   `ssh.socket`).
 - Юзер `ramdll` (uid 1000, `%sudo` с паролем + группа `docker`).
 - Инспекция `x-ui.db`: `docker cp 3x-ui:/etc/x-ui/x-ui.db /tmp/…` +
