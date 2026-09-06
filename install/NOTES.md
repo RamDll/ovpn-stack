@@ -705,32 +705,45 @@ Go-генератор конфига в v3.6.0 выкидывает `minClientVe
 Что ломалось на живых прогонах и почему код такой. Новые находки — сразу
 под этим заголовком.
 
-## 2026-09-07 — проверка живого сервера `REDACTED-IP` (`--all`)
+## 2026-09-07 — ревизия двух живых серверов после чистых установок
 
-Прогнал полную ревизию после чистой установки. Всё в норме:
+Полная проверка двух серверов, поднятых чистым `setup.sh`. Всё в норме;
+одна находка (SNI-пул) — уже исправлена.
+
+### `REDACTED-IP` — режим `--all` (VLESS + OpenVPN)
 
 - 4 контейнера up (3 healthy, у 3x-ui healthcheck'а нет), диск 10%,
   RAM 541/1973 (swap не создан — 1973 > порога 1900);
-- nftables `policy drop` на input+forward, открыты SSH/443/80/8443/udp,
-  `2053`/`2096` только с docker-интерфейсов (снаружи `/dev/tcp` — закрыты);
-- **вход по паролю реально закрыт**: `ssh -o PubkeyAuthentication=no`
-  на порт 23346 → сервер отдаёт `Authentications that can continue:
-  publickey` (метод `password` не предлагается); порт 22 → timeout;
+- nftables `policy drop` на input+forward, открыты SSH/443/80/8443/udp;
 - `sshd -T`: `permitrootlogin no`, `passwordauthentication no`,
-  `kbdinteractiveauthentication no`;
-- страховочные таймеры сняты (остался только `ovpn-stack-acme-renew`);
+  `kbdinteractiveauthentication no`; страховочные таймеры сняты;
 - LE-серт `CN=YE2`, валиден 6 суток, таймер продления активен;
 - инбаунд: `fp=firefox`, `pbk` 43 симв., `dest=127.0.0.1:8444`,
-  серт заглушки **с SAN**; трафик-тест loopback xray-клиентом — **5/5**,
-  egress = IP сервера;
+  серт заглушки **с SAN**; трафик-тест loopback xray-клиентом — **5/5**;
 - подписка 200, `Profile-Web-Page-Url` c `:8443`; ovpn-admin 401→200.
+- **Находка:** инбаунд взял `swscan.apple.com`, xray в логе —
+  `REALITY: Choosing apple, icloud, etc. as the target may get your IP
+  blocked by the GFW`. Инбаунд работает (WARNING), но apple/icloud и
+  `dl.google.com` из `SNI_POOL` убраны, взамен dell/lenovo/cisco/
+  qualcomm/hp (проверил: TLS 1.3, отвечают). Ставился до этого фикса —
+  на самом сервере SNI не меняли (пришлось бы перевыпускать ссылку).
 
-**Единственная находка — SNI из пула.** Инбаунд взял `swscan.apple.com`,
-xray в логе: `REALITY: Choosing apple, icloud, etc. as the target may
-get your IP blocked by the GFW`. Инбаунд работает (это WARNING), но
-apple/icloud из `SNI_POOL` убраны, `dl.google.com` тоже (классический
-«рекомендованный dest»). Взамен — dell/lenovo/cisco/qualcomm/hp
-(проверил: все TLS 1.3, отвечают).
+### `REDACTED-IP` — режим `--vless`, диск 10 ГБ
+
+Подтверждает фиксы, слитые в тот же день:
+
+- 2 контейнера (`3x-ui` + `nginx`), openvpn/ovpn-admin **нет**;
+  диск 2.6/9.8 ГБ (28%) — `--vless` на 10 ГБ влезает свободно;
+- **порты панели/sub рандомные**: `ss` и nftables — `22567`/`21591`,
+  не `2053`/`2096`; снаружи оба закрыты;
+- SNI `www.bing.com` из обновлённого пула — **варнинга про apple/GFW в
+  логе xray нет**;
+- пароль закрыт (`Permission denied (publickey)`), порт 22 timeout;
+  в `sshd_config.d/` только `00-ovpn-stack.conf` — у этого провайдера
+  `50-cloud-init.conf` нет вообще;
+- LE-серт `CN=YE1`, валиден 6 суток; страховочные таймеры сняты;
+- инбаунд `fp=firefox`/`pbk` 43/`dest` локальный/серт с SAN;
+  трафик loopback — **5/5**; подписка raw+JSON 200, `:8443` в URL.
 
 ---
 
