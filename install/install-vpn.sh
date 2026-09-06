@@ -324,14 +324,15 @@ cmd_htpasswd_generate() {
 # ---------------------------------------------------------------------------
 # nginx — рендер конфига и запуск последним
 # ---------------------------------------------------------------------------
-# render-nginx <mode> <xui_base_path> <xui_port> <ovpn_admin_path> [sub_path] [sub_json_path]
+# render-nginx <mode> <xui_base_path> <xui_port> <ovpn_admin_path> [sub_path] [sub_json_path] [sub_port]
 cmd_render_nginx() {
-  local mode="${1:?usage: render-nginx <mode> <xui_base_path> <xui_port> <ovpn_admin_path> [sub_path] [sub_json_path]}"
+  local mode="${1:?usage: render-nginx <mode> <xui_base_path> <xui_port> <ovpn_admin_path> [sub_path] [sub_json_path] [sub_port]}"
   local xui_path="${2:-}"
-  local xui_port="${3:-2053}"
+  local xui_port="${3:-2053}"; [[ "$xui_port" == "0" ]] && xui_port=2053
   local ovpn_admin_path="${4:-}"
   local sub_path="${5:-}"
   local sub_json_path="${6:-}"
+  local sub_port="${7:-2096}"; [[ -z "$sub_port" || "$sub_port" == "0" ]] && sub_port=2096
   local tmpl="$TMPL_DIR/nginx.conf.tmpl"
   local out="$RENDER_DIR/nginx/conf.d/default.conf"
   mkdir -p "$RENDER_DIR/nginx/conf.d"
@@ -342,7 +343,8 @@ cmd_render_nginx() {
     "XUI_PORT=${xui_port}" \
     "OVPN_ADMIN_PATH=${ovpn_admin_path}" \
     "SUB_PATH=${sub_path}" \
-    "SUB_JSON_PATH=${sub_json_path}"
+    "SUB_JSON_PATH=${sub_json_path}" \
+    "SUB_PORT=${sub_port}"
 
   if [[ "$mode" != "vless" && "$mode" != "all" ]]; then
     strip_block "$out" "# BEGIN VLESS" "# END VLESS"
@@ -436,6 +438,7 @@ cmd_nginx_reload() {
 cmd_xui_configure() {
   local container="${1:?usage: xui-configure <container> <base_path> <admin_user> <admin_pass> [web_port]}"
   local base_path="$2" admin_user="$3" admin_pass="$4" web_port="${5:-2053}"
+  [[ -z "$web_port" || "$web_port" == "0" ]] && web_port=2053
 
   for _ in $(seq 1 30); do
     docker exec "$container" true >/dev/null 2>&1 && break
@@ -461,32 +464,33 @@ cmd_xui_configure() {
     docker exec "$container" true >/dev/null 2>&1 && break
     sleep 1
   done
-  log "xui-configure готово (base_path=$base_path)"
+  log "xui-configure готово (base_path=$base_path, port=$web_port)"
 }
 
-# xui-enable-sub <container> <sub_path> <sub_json_path> <public_ip>
+# xui-enable-sub <container> <sub_path> <sub_json_path> <public_ip> [sub_port]
 # Включает sub-сервер 3x-ui. Флагов в `x-ui setting` для этого нет, а
 # panel-API требует CSRF-пляски — правим x-ui.db напрямую (python3 + sqlite3
 # есть на минимальном Debian). Контейнер на время правки останавливаем,
 # иначе 3x-ui перезапишет БД своим состоянием при выходе.
 cmd_xui_enable_sub() {
-  local container="${1:?usage: xui-enable-sub <container> <sub_path> <sub_json_path> <public_ip>}"
+  local container="${1:?usage: xui-enable-sub <container> <sub_path> <sub_json_path> <public_ip> [sub_port]}"
   local sub_path="$2" sub_json_path="$3" ip="$4"
+  local sub_port="${5:-2096}"; [[ -z "$sub_port" || "$sub_port" == "0" ]] && sub_port=2096
   local db="$INSTALL_DIR/data/xui/x-ui.db"
   [[ -f "$db" ]] || die "не найдена база 3x-ui: $db"
   command -v python3 >/dev/null || die "нужен python3 для правки x-ui.db"
 
   docker stop "$container" >/dev/null
-  python3 - "$db" "$sub_path" "$sub_json_path" "$ip" <<'PY'
+  python3 - "$db" "$sub_path" "$sub_json_path" "$ip" "$sub_port" <<'PY'
 import sqlite3, sys
-db, sub_path, sub_json_path, ip = sys.argv[1:5]
+db, sub_path, sub_json_path, ip, sub_port = sys.argv[1:6]
 # subURI — полный базовый URL с путём и слэшем; 3x-ui дописывает к нему subId.
-# subPort/subJsonPath наружу закрыты firewall'ом, доступны только через nginx :8443.
+# subPort наружу закрыт firewall'ом, доступен только через nginx :8443.
 kv = {
     "subEnable": "true",
     "subJsonEnable": "true",
     "subListen": "",
-    "subPort": "2096",
+    "subPort": sub_port,
     "subPath": sub_path,
     "subJsonPath": sub_json_path,
     "subURI": f"https://{ip}:8443{sub_path}",

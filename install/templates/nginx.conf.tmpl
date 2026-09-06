@@ -52,12 +52,12 @@ server {
         proxy_set_header Connection "upgrade";
     }
 
-    # 3x-ui sub-сервер (порт 2096) — подписки и JSON-подписки по неочевидным
+    # 3x-ui sub-сервер (порт @@SUB_PORT@@) — подписки и JSON по неочевидным
     # путям. Домена нет, поэтому и панель, и подписка живут на :8443. Range/If-Range
     # пробрасываем — приложения-обновляторы подписок шлют range-запросы.
     location @@SUB_PATH@@ {
         limit_req zone=panels burst=20 nodelay;
-        proxy_pass http://host.docker.internal:2096@@SUB_PATH@@;
+        proxy_pass http://host.docker.internal:@@SUB_PORT@@@@SUB_PATH@@;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -68,7 +68,7 @@ server {
     }
     location @@SUB_JSON_PATH@@ {
         limit_req zone=panels burst=20 nodelay;
-        proxy_pass http://host.docker.internal:2096@@SUB_JSON_PATH@@;
+        proxy_pass http://host.docker.internal:@@SUB_PORT@@@@SUB_JSON_PATH@@;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
