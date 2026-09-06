@@ -1,5 +1,24 @@
 # install/ — установщик VLESS Reality + OpenVPN
 
+## Как запустить
+
+На **домашней машине** (Linux / macOS / WSL2 — не на сервере):
+
+```sh
+git clone https://github.com/RamDll/ovpn-stack.git
+cd ovpn-stack/install
+./setup.sh --all --ip <IP-сервера>      # или --vless / --openvpn
+```
+
+Это не один файл — `setup.sh` дёргает соседние `bootstrap.sh`,
+`install-vpn.sh` и `templates/`, поэтому нужен весь checkout репозитория
+(не `wget` одного скрипта, как у корневого `install.sh`). На сервере
+ничего заранее ставить не надо — только IP и root-пароль под рукой.
+Полный список флагов — `./setup.sh --help`; что спросит интерактивно —
+§5; требования к домашней машине — §1.
+
+---
+
 Точка входа — [`setup.sh`](setup.sh): гоняется **с домашней машины
 владельца**, дёргает `bootstrap.sh` и `install-vpn.sh` на сервере по SSH.
 Это **отдельный установщик**, не связанный с корневым

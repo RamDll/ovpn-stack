@@ -50,6 +50,20 @@ sudo bash install.sh
 Внешний (облачный) файрвол хостера скрипт не видит — если после установки панель
 недоступна, открой `80,443/tcp` и `<ovpn>/udp` в панели провайдера.
 
+### Нужен ещё и VLESS Reality, или полный управляемый прогон с домашней машины
+
+Тогда — второй установщик, [`install/`](install/) (запускается **не на
+сервере**, а на домашнем ПК; ставит VLESS Reality + OpenVPN, хардненит
+SSH). Нужен весь checkout репозитория:
+
+```bash
+git clone https://github.com/RamDll/ovpn-stack.git
+cd ovpn-stack/install
+./setup.sh --all --ip <IP-сервера>        # или --vless / --openvpn
+```
+
+Подробности, флаги и требования — [`install/README.md`](install/README.md).
+
 Ручная установка по шагам — ниже.
 
 ---
