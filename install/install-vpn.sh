@@ -489,8 +489,33 @@ cmd_fakesite_install() {
 
   mkdir -p /var/www/ovpn-stack-fakesite
   if [[ ! -f /var/www/ovpn-stack-fakesite/index.html ]]; then
+    # Простой holding-page вместо пустого <body>: при активном пробинге
+    # IP:443 обычным TLS видно осмысленную «страницу-заглушку припаркованного
+    # домена», а не подозрительно пустой документ. Правдоподобности это добавляет
+    # немного (главный тель — self-signed серт), но и не мешает.
     cat > /var/www/ovpn-stack-fakesite/index.html <<EOF
-<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${domain}</title></head><body></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${domain}</title>
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       background:#fafafa;color:#333;display:flex;min-height:100vh;margin:0;
+       align-items:center;justify-content:center;text-align:center}
+  main{max-width:32rem;padding:2rem}
+  h1{font-weight:600;font-size:1.5rem;margin:0 0 .5rem}
+  p{color:#777;line-height:1.6;margin:0}
+</style>
+</head>
+<body>
+<main>
+<h1>Site under construction</h1>
+<p>This website is not available yet. Please check back later.</p>
+</main>
+</body>
+</html>
 EOF
   fi
 
