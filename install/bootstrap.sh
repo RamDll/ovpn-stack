@@ -53,15 +53,25 @@ cancel_safety_rollback() {
 APT_OPTS=(-o DPkg::Lock::Timeout=300 -o Dpkg::Options::=--force-confold)
 
 # Свежий VPS в первые минуты держит dpkg-lock под cloud-init / apt-daily /
-# unattended-upgrades (иногда с апгрейдом ядра — на несколько минут).
-# DPkg::Lock::Timeout сам по себе иногда не спасал (frontend-lock, > таймаута),
-# поэтому ещё и ждём явно, до 12 минут, потом пробуем — apt подождёт остаток.
+# unattended-upgrades. Вместо того чтобы ждать, пока они отвоюют lock, —
+# останавливаем их таймеры и сервисы: наш apt берёт lock сразу. Свой
+# unattended-upgrades скрипт настраивает заново дальше по ходу.
+stop_apt_daily() {
+  systemctl stop --no-block \
+    apt-daily.timer apt-daily-upgrade.timer \
+    apt-daily.service apt-daily-upgrade.service \
+    unattended-upgrades.service >/dev/null 2>&1 || true
+}
+
+# после stop_apt_daily lock обычно свободен за секунды; ждём коротко — вдруг
+# уже запущенный apt/dpkg (cloud-init) ещё дорабатывает. Потом пробуем всё
+# равно — apt подождёт остаток сам (DPkg::Lock::Timeout).
 wait_dpkg_lock() {
-  local w=0 max=720
+  local w=0 max=180
   while pgrep -x 'apt|apt-get|dpkg|aptitude|unattended-upgr|packagekitd' >/dev/null 2>&1 \
      || fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock >/dev/null 2>&1; do
-    (( w >= max )) && { log "dpkg-lock всё ещё занят после ${max}с — пробую всё равно"; return 0; }
-    (( w % 30 == 0 )) && log "dpkg-lock занят (cloud-init/unattended-upgrades) — жду... ${w}/${max}с"
+    (( w >= max )) && { log "dpkg-lock ещё занят после ${max}с — пробую всё равно (apt подождёт сам)"; return 0; }
+    (( w % 20 == 0 )) && log "dpkg-lock занят (cloud-init) — жду... ${w}/${max}с"
     sleep 5; w=$((w + 5))
   done
   (( w > 0 )) && log "dpkg-lock освободился за ${w}с"
@@ -95,6 +105,9 @@ cmd_system_prep() {
 
   export DEBIAN_FRONTEND=noninteractive
   export NEEDRESTART_MODE=a
+
+  log "останавливаю apt-daily / unattended-upgrades, чтобы не воевали за dpkg-lock"
+  stop_apt_daily
 
   # если прошлый прогон прервали посреди apt — привести dpkg в порядок
   wait_dpkg_lock
@@ -162,10 +175,9 @@ Unattended-Upgrade::Automatic-Reboot-WithUsers "false";
 EOF
 
   systemctl enable --now unattended-upgrades.service >/dev/null 2>&1 || true
-  # таймер апстрима не должен стартовать параллельно с нашим apt прямо сейчас
-  if systemctl is-active --quiet apt-daily-upgrade.timer 2>/dev/null; then
-    log "apt-daily-upgrade.timer активен (штатно, сработает по расписанию)"
-  fi
+  # вернуть apt-daily таймеры, которые останавливали в начале (наш apt уже
+  # отработал) — иначе авто-security-обновления не запустятся до ребута
+  systemctl start apt-daily.timer apt-daily-upgrade.timer >/dev/null 2>&1 || true
 
   log "system-prep готово"
 }
