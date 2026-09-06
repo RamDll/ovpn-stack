@@ -39,7 +39,7 @@ usage() {
 
 Использование:
   $0 [--vless|--openvpn|--all] [--ip <addr>] [--user <name>] \\
-     [--ssh-port <port>] [--sni <domain>] [--staging] [--no-ssh-config]
+     [--ssh-port <port>] [--sni <domain>] [--staging] [--no-key-copy]
 
 Флаги:
   --vless          режим: только VLESS Reality
@@ -53,8 +53,9 @@ usage() {
                    берётся из state.env)
   --staging        ACME staging Let's Encrypt — серт НЕ доверенный браузером,
                    но высокие лимиты: для повторных тест-прогонов установщика
-  --no-ssh-config  не копировать ключ в ~/.ssh и не писать в ~/.ssh/config
-                   (по умолчанию — копирует, чтобы клон был не нужен)
+  --no-key-copy    не копировать приватный ключ в ~/.ssh (по умолчанию —
+                   копирует в ~/.ssh/ovpn-stack-<ip>, чтобы клон был не нужен;
+                   ~/.ssh/config не трогается в любом случае)
   -h, --help       эта справка
 
 root-пароль всегда вводится интерактивно; пароль пользователя — тоже
@@ -71,7 +72,7 @@ SSH_USER_ARG=""
 SSH_PORT_ARG=""
 SNI_ARG=""
 ACME_STAGING=""
-NO_SSH_CONFIG=0
+NO_KEY_COPY=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --vless)    MODE="vless" ;;
@@ -82,7 +83,7 @@ while [[ $# -gt 0 ]]; do
     --ssh-port) SSH_PORT_ARG="${2:?}"; shift ;;
     --sni)      SNI_ARG="${2:?}"; shift ;;
     --staging)  ACME_STAGING="staging" ;;
-    --no-ssh-config) NO_SSH_CONFIG=1 ;;
+    --no-key-copy) NO_KEY_COPY=1 ;;
     -h|--help)  usage; exit 0 ;;
     *) die "неизвестный флаг: $1 (см. --help)" ;;
   esac
@@ -186,7 +187,7 @@ HOSTKEY_RAW="$STATE_DIR/hostkey.raw"
 SSH_USER=""; SSH_PORT=""; USER_PASSWORD=""; INSTALLED_MODES=""; DEST=""
 XUI_BASE_PATH=""; SUB_PATH=""; SUB_JSON_PATH=""; XUI_ADMIN_PASS=""
 OVPN_ADMIN_PATH=""; OVPN_ADMIN_PASS=""; OVPN_PORT=""
-SSH_ALIAS=""; SSH_KEY_HOME=""
+SSH_KEY_HOME=""
 
 # Пул доменов для REALITY SNI (см. блок «Шаг 5»). Крупные, всегда живые
 # HTTPS-сайты на TLS 1.3, которые почти нигде не блокируют. Дефолт —
@@ -224,20 +225,17 @@ EOF
   chmod 600 "$STATE_ENV"
 }
 
-# Копия SSH-ключа в ~/.ssh + запись в ~/.ssh/config. Приватный ключ живёт
-# только в install/.state/<ip>/ (в .gitignore, заново не создаётся), а на
-# сервере после хардненинга нет ни root, ни пароля — удалить клон = потерять
-# доступ. После этой функции клон не нужен: `ssh ovpn-stack-<ip>`.
-# Блок в config ограничен маркерами, повторный прогон его перезаписывает.
-install_ssh_config() {
+# Копия приватного ключа в ~/.ssh. Ключ живёт только в
+# install/.state/<ip>/ (в .gitignore, заново не создаётся), а на сервере
+# после хардненинга нет ни root, ни пароля — удалить клон без копии ключа =
+# потерять доступ. Копируем только файл ключа; ~/.ssh/config НЕ трогаем
+# (личный файл пользователя) — готовую команду ssh печатаем в сводке.
+install_ssh_key() {
   local ssh_dir="$HOME/.ssh"
-  local conf="$ssh_dir/config"
   local dst_key="$ssh_dir/ovpn-stack-${SAFE_IP}"
-  local host_alias="ovpn-stack-${IP}"
-  local b="# BEGIN ovpn-stack ${IP}" e="# END ovpn-stack ${IP}"
 
-  [[ -n "${HOME:-}" && -f "$KEY_FILE" && -n "$SSH_PORT" ]] || {
-    warn "пропускаю запись в ~/.ssh (нет HOME/ключа/порта) — доступ только через клон"
+  [[ -n "${HOME:-}" && -f "$KEY_FILE" ]] || {
+    warn "пропускаю копию ключа в ~/.ssh (нет HOME/ключа) — доступ только через клон"
     return 0
   }
 
@@ -245,30 +243,8 @@ install_ssh_config() {
   cp -f "$KEY_FILE" "$dst_key"; chmod 600 "$dst_key"
   cp -f "${KEY_FILE}.pub" "${dst_key}.pub"; chmod 644 "${dst_key}.pub"
 
-  local tmp; tmp="$(mktemp)"
-  if [[ -f "$conf" ]]; then
-    # вырезаем прежний блок и хвостовые пустые строки, оставляем один разделитель
-    awk -v b="$b" -v e="$e" '
-      $0==b {skip=1; next}
-      skip && $0==e {skip=0; next}
-      !skip {a[++n]=$0; if (NF) last=n}
-      END {for (i=1; i<=last; i++) print a[i]}' "$conf" > "$tmp"
-    [[ -s "$tmp" ]] && printf '\n' >> "$tmp"
-  fi
-  {
-    printf '%s\n' "$b"
-    printf 'Host %s\n' "$host_alias"
-    printf '    HostName %s\n' "$IP"
-    printf '    User %s\n' "$SSH_USER"
-    printf '    Port %s\n' "$SSH_PORT"
-    printf '    IdentityFile %s\n' "$dst_key"
-    printf '    IdentitiesOnly yes\n'
-    printf '%s\n' "$e"
-  } >> "$tmp"
-  mv "$tmp" "$conf"; chmod 600 "$conf"
-
-  SSH_ALIAS="$host_alias"; SSH_KEY_HOME="$dst_key"
-  ok "ключ скопирован в $dst_key, алиас в ~/.ssh/config — можно: ssh $host_alias"
+  SSH_KEY_HOME="$dst_key"
+  ok "ключ скопирован в $dst_key — каталог install/.state/ можно удалять"
 }
 
 # ---------------------------------------------------------------------------
@@ -658,10 +634,10 @@ step "Шаг 6 — сводка"
 [[ "$MODE" != "vless" ]]   && INSTALLED_MODES="${INSTALLED_MODES}openvpn "
 save_state
 
-if [[ "$NO_SSH_CONFIG" -eq 0 ]]; then
-  install_ssh_config
+if [[ "$NO_KEY_COPY" -eq 0 ]]; then
+  install_ssh_key
 else
-  info "--no-ssh-config: ключ только в ${KEY_FILE} (не удаляй этот каталог!)"
+  info "--no-key-copy: ключ только в ${KEY_FILE} — не удаляй каталог install/.state/"
 fi
 
 {
@@ -669,11 +645,9 @@ fi
   echo "Сгенерировано: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo
   echo "== Доступ =="
-  if [[ -n "$SSH_ALIAS" ]]; then
-    echo "ssh ${SSH_ALIAS}"
-    echo "  (ключ скопирован в ${SSH_KEY_HOME}, алиас в ~/.ssh/config —"
-    echo "   каталог install/.state/ можно удалять)"
-    echo "полная форма: ssh -i '${SSH_KEY_HOME}' -p ${SSH_PORT} ${SSH_USER}@${IP}"
+  if [[ -n "$SSH_KEY_HOME" ]]; then
+    echo "ssh -i '${SSH_KEY_HOME}' -p ${SSH_PORT} ${SSH_USER}@${IP}"
+    echo "  (ключ скопирован в ${SSH_KEY_HOME} — каталог install/.state/ можно удалять)"
   else
     echo "ssh -i '${KEY_FILE}' -p ${SSH_PORT} ${SSH_USER}@${IP}"
     echo "  ВНИМАНИЕ: ключ только в install/.state/ — не удаляй этот каталог"
@@ -750,8 +724,4 @@ if [[ "$HAVE_QRENCODE" -eq 1 && -n "$VLESS_LINE" ]]; then
 fi
 
 echo
-if [[ -n "$SSH_ALIAS" ]]; then
-  ok "Готово. Подключение: ssh ${SSH_ALIAS}"
-else
-  ok "Готово. Подключение: ssh -i '${KEY_FILE}' -p ${SSH_PORT} ${SSH_USER}@${IP}"
-fi
+ok "Готово. Подключение: ssh -i '${SSH_KEY_HOME:-$KEY_FILE}' -p ${SSH_PORT} ${SSH_USER}@${IP}"
