@@ -5,6 +5,61 @@
 
 ---
 
+## 2026-09-06 — эталонный чистый прогон `setup.sh --all` ✅
+
+Первый полный прогон с нуля на переустановленном `REDACTED-IP`
+(до этого всё правилось руками — см. оговорки ниже). Ветка `master`
+на `6b026b8`. Прошёл до сводки без единой ручной правки.
+
+### Что подтвердилось «из коробки»
+
+- **sshd-harden** — новый порт (случайный, в этом прогоне 45101),
+  `PermitRootLogin no`, страховочные таймеры `ovpn-stack-safety-*`
+  поставились и сняты после подтверждения новым соединением.
+- **nftables** — `chain input policy drop`, открыты `45101` (SSH),
+  `443` (VLESS), `80` (ACME), `8443` (nginx), `39785/udp` (OpenVPN);
+  `2053` и **`2096`** — только `iifname "docker0"`/`"br-*"`.
+- **LE IP-серт** — выпущен standalone на :80, потом переключён на
+  webroot; цепочка `YE1`/Generation-2 (та же, что вызывала «Не
+  защищено» в отставшем Chrome — см. запись про cert ниже).
+- **3x-ui** — `webBasePath` случайный, панель 200.
+- **Подписки** — `subEnable`, **`subJsonEnable`**, `subURI`,
+  **`subJsonURI`** все выставлены `cmd_xui_enable_sub`. raw и JSON
+  подписки обе отдают 200 через `:8443`; `Profile-Web-Page-Url`
+  содержит `:8443` (фикс `$http_host` в шаблоне работает без правок).
+- **fakesite** — self-signed серт с SAN, отдаёт holding-page
+  «Site under construction» (не пустой `<body>`).
+- **Инбаунд** — `realitySettings.settings.publicKey` записан (43
+  символа), `fp=firefox`, `externalProxy` = `<public_ip>:443`,
+  первому клиенту проставлен `subId`.
+- **Трафик VLESS+REALITY** — loopback xray-клиент (26.6.27) против
+  инбаунда: **8/8** запросов через туннель.
+- **ovpn-admin** — 401 без Basic Auth, 200 с ним; OpenVPN-контейнер
+  `Initialization Sequence Completed`, healthy.
+
+### Мелочи, не блокеры
+
+- Промпт «Домен для SNI» не валидирует ввод — в этом прогоне ввели
+  `treeaasure` (не домен, без TLD). REALITY работает (сервер к SNI не
+  ходит), но для маскировки при активном пробинге правдоподобнее
+  реальное имя. Можно добавить проверку/подсказку в `setup.sh`.
+- `sqlite3` на чистом сервере нет (инспекция `x-ui.db` — через
+  `docker cp` + `python3`, оба есть).
+- **NOPASSWD sudo не настраивается установщиком** — рабочий юзер
+  получает обычный `%sudo` с паролем (пароль в
+  `install/.state/<ip>/state.env` и в сводке).
+
+### Прежние оговорки сняты
+
+Записи ниже (2026-09-05 и первая 2026-09-06) описывали фиксы,
+применявшиеся **вручную** на старом инстансе. Этот прогон подтвердил,
+что штатный `setup.sh` делает всё то же сам: пустой `pbk`,
+`fp=firefox`, `settings.publicKey`, `$http_host`, `subJsonEnable`,
+holding-page. Тестовый сервер теперь — **чистый прогон**, снапшотов
+ручных правок больше нет.
+
+---
+
 ## 2026-09-06 — «неправильные ссылки на подписки» = баг nginx `$host`
 
 Проверено на живом `REDACTED-IP` (3x-ui v3.4.2, `ghcr.io/mhsanaei/3x-ui:v3.4.2`)
@@ -86,31 +141,22 @@ fingerprint в externalProxy tlsSettings, имена внешних ссылок
 
 ### Доступ к тест-серверу (`REDACTED-IP`)
 
-sshd захардён (`bootstrap.sh sshd-harden` → drop-in `99-ovpn-stack.conf`):
-`PermitRootLogin no`, `PasswordAuthentication no`, порт **28848** (не 22 —
-случайный 20000–60000, выбирается `setup.sh`; лежит в `state/` на машине,
-откуда ставили, в git его нет). trixie — socket-активация, порт правится
-и в `ssh.socket` drop-in.
+**Переустановлен 2026-09-06 чистым `setup.sh --all`** — всё ниже про
+старый инстанс (порт 28848, ручные правки) больше не актуально.
+Актуальные реквизиты каждого прогона — в
+`install/.state/193_188_21_84/{summary.txt,state.env}` на домашней
+машине (SSH-порт, ключ, пароль sudo, пароли панелей). `setup.sh`
+пишет туда же и обновляет `~/.ssh/config` НЕ трогает — алиас `vps`
+правится вручную под новый порт/ключ (`IdentityFile` = ключ из
+`.state/`). Разрешение в Claude Code: `Bash(ssh vps:*)` в
+`.claude/settings.local.json` (gitignore).
 
-- **Юзер `ramdll`** (uid 1000, группы `sudo` + `docker`) — не `root`.
-  Sudo без пароля не проверял; docker доступен напрямую (группа).
-- SSH-ключ Claude Code (`~/.ssh/id_ed25519`, комментарий `new_arch`)
-  добавлен в `/home/ramdll/.ssh/authorized_keys`. Алиас на домашнем ПК:
-  `~/.ssh/config` → `Host vps` (`HostName REDACTED-IP`, `User ramdll`,
-  `Port 28848`). Разрешение в Claude Code: `Bash(ssh vps:*)` в
-  `.claude/settings.local.json` (в gitignore).
-- Панель: `https://REDACTED-IP:8443/x-92a5a2b2/`, логин по NOTES ниже
-  (`admin` / `Testpass123` — сменить). Инспекция БД:
-  `docker cp 3x-ui:/etc/x-ui/x-ui.db ~/xui-inspect/` (sqlite3/python3 есть
-  на хосте, в контейнере — нет). Копия `x-ui.db` осталась в
-  `~/xui-inspect/` (внутри `secret`, `panelGuid` — можно удалить).
-- Файрвол пускает `28848` (SSH), `80` (ACME), `443` (VLESS/REALITY),
-  `8443` (nginx: панели + подписка). Порты `2053`/`2096`/`8080` — только
-  с docker-интерфейсов.
-- Живой `install-render/nginx/conf.d/default.conf` на сервере уже
-  пропатчен вручную под фикс `$http_host` (2026-09-06) и перезагружен;
-  `install-render/` в gitignore, чистый `render-nginx` перезапишет его
-  из шаблона.
+- sshd: `PermitRootLogin no`, `PasswordAuthentication no`, случайный
+  порт 20000–60000 (drop-in `99-ovpn-stack.conf`; trixie — правится и
+  `ssh.socket`).
+- Юзер `ramdll` (uid 1000, `%sudo` с паролем + группа `docker`).
+- Инспекция `x-ui.db`: `docker cp 3x-ui:/etc/x-ui/x-ui.db /tmp/…` +
+  `python3` (sqlite3 на чистом сервере нет).
 
 ### Бамп 3x-ui v3.4.2 → v3.6.0 — протестирован, ОТЛОЖЕН (minClientVer)
 
