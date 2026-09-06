@@ -464,7 +464,7 @@ else
   drop_root_pw; unset ROOT_PASSWORD   # дальше только ключевая аутентификация
 
   if ! sudo_key true; then
-    die "sudo у $SSH_USER не работает. root и пароль НЕ тронуты — это блокер, см. README §6 п.4."
+    die "sudo у $SSH_USER не работает. root и пароль НЕ тронуты — это блокер, см. NOTES.md §6 п.4."
   fi
   ok "sudo подтверждён — с этого момента безопасно продолжать"
 
@@ -565,7 +565,7 @@ gen_pass() { openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 20; }
 if [[ "$MODE" == "vless" || "$MODE" == "all" ]]; then
   # пути и пароль — из state.env, если уже есть; иначе генерим и сохраним ниже
   [[ -n "$XUI_BASE_PATH" ]] || XUI_BASE_PATH="/x-$(gen_hex 4)/"
-  [[ -n "$SUB_PATH"      ]] || SUB_PATH="/sub-$(gen_hex 8)/"          # неочевидные, как у панели (README §8, §11)
+  [[ -n "$SUB_PATH"      ]] || SUB_PATH="/sub-$(gen_hex 8)/"          # неочевидные, как у панели (NOTES.md §8, §11)
   [[ -n "$SUB_JSON_PATH" ]] || SUB_JSON_PATH="/json-$(gen_hex 8)/"
   [[ -n "$XUI_ADMIN_PASS" ]] || XUI_ADMIN_PASS="$(gen_pass)"
   XUI_ADMIN_USER="admin"
@@ -627,7 +627,7 @@ EOF
     info "SNI: $DEST (из --sni / state.env)"
   fi
 
-  step "Локальный fakesite для dest (не внешний домен — см. README §9)"
+  step "Локальный fakesite для dest (не внешний домен — см. NOTES.md §9)"
   FAKESITE_OUT="$(sudo_key "${INSTALLVPN} fakesite-install '${DEST}'")"
   FAKESITE_DEST="$(awk -F= '/^FAKESITE_DEST=/{print $2}' <<<"$FAKESITE_OUT")"
   [[ -n "$FAKESITE_DEST" ]] || die "fakesite-install не вернул адрес dest"
