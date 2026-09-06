@@ -404,6 +404,21 @@ cmd_compose_up_service() {
   compose_up_retry "$svc"
 }
 
+# После того как все образы собраны/скачаны и контейнеры подняты, BuildKit-
+# кэш сборки ovpn-admin (node_modules, go-модули, промежуточные слои) —
+# 2–4 ГБ чистого мусора. На маленьком диске (10 ГБ) это половина запаса.
+# Финальный образ уже в `docker images`, повторный `--build` пересоберётся
+# и без кэша (просто медленнее). Best-effort.
+cmd_build_cache_prune() {
+  command -v docker >/dev/null 2>&1 || return 0
+  local before after
+  before=$(docker system df --format '{{.Type}} {{.Reclaimable}}' 2>/dev/null | awk '/Build/{print $2$3}')
+  docker builder prune -af >/dev/null 2>&1 || true
+  docker image prune -f   >/dev/null 2>&1 || true
+  after=$(df -Pm / | awk 'NR==2{print $4}')
+  log "build-cache-prune готово (кэш сборки: ${before:-?}); свободно на / ~${after} МБ"
+}
+
 # nginx-reload — `docker compose up` не трогает уже запущенный контейнер,
 # если его спецификация (образ/порты/volume-список) не изменилась; сам
 # bind-mounted конфиг он не хэширует. При повторном прогоне install/
@@ -765,6 +780,7 @@ main() {
     render-nginx)             cmd_render_nginx "$@" ;;
     compose-up)               cmd_compose_up "$@" ;;
     compose-up-service)       cmd_compose_up_service "$@" ;;
+    build-cache-prune)        cmd_build_cache_prune "$@" ;;
     nginx-reload)             cmd_nginx_reload "$@" ;;
     xui-configure)            cmd_xui_configure "$@" ;;
     xui-enable-sub)           cmd_xui_enable_sub "$@" ;;

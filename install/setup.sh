@@ -595,6 +595,12 @@ ssh_key "${INSTALLVPN} nginx-reload"
 sudo_key "${INSTALLVPN} cert-switch-to-webroot '${IP}' '${ACME_STAGING}'"
 ok "nginx поднят, продление сертификата переключено на webroot"
 
+# всё собрано и поднято — чистим BuildKit-кэш сборки ovpn-admin (2–4 ГБ)
+if [[ "$MODE" != "vless" ]]; then
+  step "Чищу кэш сборки Docker (образы уже собраны)"
+  ssh_key "${INSTALLVPN} build-cache-prune" || warn "prune не удался — не критично"
+fi
+
 # ===========================================================================
 # шаг 5 — первый VLESS+Reality инбаунд
 # ===========================================================================
