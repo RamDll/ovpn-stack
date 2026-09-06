@@ -96,6 +96,10 @@ cmd_system_prep() {
   export DEBIAN_FRONTEND=noninteractive
   export NEEDRESTART_MODE=a
 
+  # если прошлый прогон прервали посреди apt — привести dpkg в порядок
+  wait_dpkg_lock
+  dpkg --configure -a >/dev/null 2>&1 || true
+
   log "apt update"
   apt_do update -qq
 
