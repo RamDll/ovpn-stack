@@ -75,11 +75,20 @@ cmd_system_prep() {
   log "apt dist-upgrade"
   apt-get "${APT_OPTS[@]}" -y dist-upgrade -qq
 
-  if ! command -v sudo >/dev/null 2>&1; then
-    log "ставлю sudo (на минимальных образах его нет)"
-    apt-get "${APT_OPTS[@]}" -y install -qq sudo
+  # инструменты, без которых установщик не отработает независимо от режима:
+  # sudo (управление), nftables (firewall, шаг 3), python3 (правка x-ui.db /
+  # JSON в install-vpn.sh). Обычно в Debian есть, но минимальные образы
+  # некоторых хостеров их вырезают — тогда установка падала посреди процесса
+  # ("nft: command not found" и т.п.).
+  local need=() b
+  for b in sudo:sudo nft:nftables python3:python3; do
+    command -v "${b%%:*}" >/dev/null 2>&1 || need+=("${b#*:}")
+  done
+  if [[ ${#need[@]} -gt 0 ]]; then
+    log "доставляю: ${need[*]}"
+    apt-get "${APT_OPTS[@]}" -y install -qq "${need[@]}"
   else
-    log "sudo уже установлен"
+    log "sudo / nftables / python3 уже на месте"
   fi
 
   log "часовой пояс Europe/Moscow"
@@ -236,6 +245,15 @@ cmd_nftables_apply() {
   local mode="${2:?mode required: vless|openvpn|all}"
   local ovpn_port="${3:-}"
   mkdir -p "$STATE_DIR"
+
+  # подстраховка: system-prep обычно ставит nftables, но если сюда пришли
+  # без него (прямой вызов / минимальный образ) — доставить, иначе nft ниже
+  # упадёт "command not found".
+  if ! command -v nft >/dev/null 2>&1; then
+    log "nft не найден — ставлю nftables"
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get "${APT_OPTS[@]}" -y install -qq nftables || die "не смог поставить nftables"
+  fi
 
   local tmpl="$INSTALL_DIR/install/templates/nftables.conf.tmpl"
   [[ -f "$tmpl" ]] || die "не найден шаблон $tmpl"
