@@ -37,19 +37,22 @@ usage() {
 Установщик ovpn-stack — см. install/README.md
 
 Использование:
-  $0 [--vless|--openvpn|--all] [--ip <addr>] [--user <name>] [--ssh-port <port>]
+  $0 [--vless|--openvpn|--all] [--ip <addr>] [--user <name>] \\
+     [--ssh-port <port>] [--sni <domain>]
 
 Флаги:
   --vless          режим: только VLESS Reality
   --openvpn        режим: только OpenVPN
   --all            режим: оба
   --ip <addr>      IP сервера (иначе спросит)
-  --user <name>    имя sudo-пользователя (иначе \$USER в нижнем регистре)
+  --user <name>    имя sudo-пользователя (иначе спросит, дефолт \$USER)
   --ssh-port <p>   порт SSH после хардненинга (иначе случайный 20000-60000)
+  --sni <domain>   домен для REALITY SNI (иначе спросит; при повторном
+                   прогоне берётся из state.env)
   -h, --help       эта справка
 
-root-пароль и пароль пользователя ВСЕГДА вводятся интерактивно — их нельзя
-передать флагом (см. install/README.md, принцип «секреты не в git/ps»).
+root-пароль всегда вводится интерактивно; пароль пользователя — тоже
+(Enter — сгенерировать). Секреты нельзя передать флагом (не в git/ps).
 EOF
 }
 
@@ -60,6 +63,7 @@ MODE=""
 IP=""
 SSH_USER_ARG=""
 SSH_PORT_ARG=""
+SNI_ARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --vless)    MODE="vless" ;;
@@ -68,6 +72,7 @@ while [[ $# -gt 0 ]]; do
     --ip)       IP="${2:?}"; shift ;;
     --user)     SSH_USER_ARG="${2:?}"; shift ;;
     --ssh-port) SSH_PORT_ARG="${2:?}"; shift ;;
+    --sni)      SNI_ARG="${2:?}"; shift ;;
     -h|--help)  usage; exit 0 ;;
     *) die "неизвестный флаг: $1 (см. --help)" ;;
   esac
@@ -165,12 +170,13 @@ SUMMARY_FILE="$STATE_DIR/summary.txt"
 STATE_ENV="$STATE_DIR/state.env"
 HOSTKEY_RAW="$STATE_DIR/hostkey.raw"
 
-SSH_USER=""; SSH_PORT=""; USER_PASSWORD=""; INSTALLED_MODES=""
+SSH_USER=""; SSH_PORT=""; USER_PASSWORD=""; INSTALLED_MODES=""; DEST=""
 # shellcheck disable=SC1090
 [[ -f "$STATE_ENV" ]] && source "$STATE_ENV"
 
 [[ -n "$SSH_USER_ARG" ]] && SSH_USER="$SSH_USER_ARG"
 [[ -n "$SSH_PORT_ARG" ]] && SSH_PORT="$SSH_PORT_ARG"
+[[ -n "$SNI_ARG" ]]      && DEST="$SNI_ARG"
 
 save_state() {
   umask 077
@@ -179,6 +185,7 @@ SSH_USER='$SSH_USER'
 SSH_PORT='$SSH_PORT'
 USER_PASSWORD='$USER_PASSWORD'
 INSTALLED_MODES='$INSTALLED_MODES'
+DEST='$DEST'
 EOF
   chmod 600 "$STATE_ENV"
 }
@@ -468,8 +475,12 @@ VLESS_LINE=""
 VLESS_SUBID=""
 if [[ "$MODE" == "vless" || "$MODE" == "all" ]]; then
   step "Шаг 5 — первый VLESS+Reality инбаунд"
-  read -rp "Домен для SNI (просто правдоподобное имя, к серверу не подключаемся — см. README §9): " DEST
-  [[ -n "$DEST" ]] || DEST="www.microsoft.com"
+  if [[ -z "$DEST" ]]; then
+    read -rp "Домен для SNI (правдоподобное имя, к серверу не подключаемся — README §9): " DEST
+    [[ -n "$DEST" ]] || DEST="www.microsoft.com"
+  else
+    info "SNI: $DEST (из --sni / state.env)"
+  fi
 
   step "Локальный fakesite для dest (не внешний домен — см. README §9)"
   FAKESITE_OUT="$(sudo_key "${INSTALLVPN} fakesite-install '${DEST}'")"

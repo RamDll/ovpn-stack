@@ -589,6 +589,27 @@ cmd_vless_create() {
   if grep -q '"remark":"vless-reality"' <<<"$existing"; then
     log "инбаунд vless-reality уже существует — не создаю повторно"
     rm -f "$cookies"
+    # всё равно отдаём реквизиты существующего инбаунда — чтобы сводка
+    # при повторном (идемпотентном) прогоне была полной, а не без ключа.
+    python3 - "$existing" "$fingerprint" <<'PY'
+import json, sys
+data = json.loads(sys.argv[1]); fp = sys.argv[2]
+ib = next(o for o in data["obj"] if o.get("remark") == "vless-reality")
+st = json.loads(ib["settings"]); ss = json.loads(ib["streamSettings"])
+rs = ss.get("realitySettings", {})
+c = (st.get("clients") or [{}])[0]
+out = {
+    "VLESS_UUID": c.get("id", ""),
+    "VLESS_PUBKEY": rs.get("settings", {}).get("publicKey", ""),
+    "VLESS_SHORTID": (rs.get("shortIds") or [""])[0],
+    "VLESS_SUBID": c.get("subId", ""),
+    "VLESS_DEST": rs.get("dest", ""),
+    "VLESS_SNI": (rs.get("serverNames") or [""])[0],
+    "VLESS_FP": rs.get("settings", {}).get("fingerprint") or fp,
+}
+for k, v in out.items():
+    print(f"{k}={v}")
+PY
     return 0
   fi
 
