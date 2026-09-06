@@ -233,12 +233,10 @@ else
   fi
   [[ -s "$HOSTKEY_RAW" ]] || die "не получил host key — сервер не отвечает на 22/tcp?"
 
-  echo
-  echo "  Fingerprint (сверь с панелью управления сервером):"
-  ssh-keygen -lf "$HOSTKEY_RAW" | sed 's/^/    /'
-  echo
-  read -rp "  Совпадает? Продолжить (yes/no): " CONFIRM
-  [[ "$CONFIRM" == "yes" ]] || die "отменено пользователем"
+  # host key берём как есть (TOFU) и пиним в known_hosts проекта. Раньше тут
+  # была интерактивная сверка fingerprint с панелью хостинга — убрали как
+  # редко нужную и путающую; отпечаток печатаем в лог на всякий случай.
+  info "host key: $(ssh-keygen -lf "$HOSTKEY_RAW" | awk '{print $2}')"
   cp "$HOSTKEY_RAW" "$KNOWN_HOSTS"
 
   ssh_root() {
@@ -550,8 +548,23 @@ save_state
 } > "$SUMMARY_FILE"
 chmod 600 "$SUMMARY_FILE"
 
-ok "сводка записана: $SUMMARY_FILE"
+# копия сводки в домашней директории — чтобы не искать в install/.state/<ip>/
+HOME_SUMMARY="$HOME/ovpn-stack-${SAFE_IP}-summary.txt"
+cp "$SUMMARY_FILE" "$HOME_SUMMARY"
+chmod 600 "$HOME_SUMMARY"
+
+# и печатаем всё в терминал — сводка со всеми реквизитами прямо здесь
+echo
+printf '%s\n' "────────────────────────────────────────────────────────────"
+cat "$SUMMARY_FILE"
+printf '%s\n' "────────────────────────────────────────────────────────────"
+echo
+ok "сводка сохранена: $HOME_SUMMARY (и $SUMMARY_FILE)"
+
 if [[ "$HAVE_QRENCODE" -eq 1 && -n "$VLESS_LINE" ]]; then
+  echo
+  echo "  QR-код первого VLESS-ключа — отсканировать в VLESS-клиенте"
+  echo "  (Happ, v2rayNG, NekoBox, sing-box, Streisand и т.п.):"
   echo
   qrencode -t ANSIUTF8 "$VLESS_LINE" || true
 fi
