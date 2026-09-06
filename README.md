@@ -62,6 +62,9 @@ cd ovpn-stack/install
 ./setup.sh --all --ip <IP-сервера>        # или --vless / --openvpn
 ```
 
+По завершении ключ копируется в `~/.ssh/`, добавляется алиас
+`ssh ovpn-stack-<IP>` — клон после этого можно удалить.
+
 Подробности, флаги и требования — [`install/README.md`](install/README.md).
 
 Ручная установка по шагам — ниже.
