@@ -229,8 +229,11 @@ EOF
 
 # cert-issue <ip> [email]
 cmd_cert_issue() {
-  local ip="${1:?usage: cert-issue <ip> [email]}"
+  local ip="${1:?usage: cert-issue <ip> [email] [staging]}"
   local email="${2:-}"
+  local staging="${3:-}"   # "staging" → тестовый ACME-сервер LE (не доверенный
+                            # браузером, но с высокими лимитами — для повторных
+                            # прогонов установщика; см. setup.sh --staging)
   local cert_dir="$RENDER_DIR/nginx/ssl"
 
   if [[ -s "$cert_dir/fullchain.pem" && -s "$cert_dir/privkey.pem" ]]; then
@@ -238,12 +241,18 @@ cmd_cert_issue() {
     return 0
   fi
 
+  local acme_server="letsencrypt"
+  if [[ "$staging" == "staging" ]]; then
+    acme_server="letsencrypt_test"
+    log "ACME STAGING — сертификат НЕ будет доверенным браузером (тестовый прогон)"
+  fi
+
   log "выпускаю IP-сертификат Let's Encrypt через acme.sh (standalone, порт 80)"
   local email_arg=()
   [[ -n "$email" ]] && email_arg=(--accountemail "$email")
 
   "$ACME_BIN" --home "$ACME_HOME" --issue --standalone \
-    --server letsencrypt \
+    --server "$acme_server" \
     -d "$ip" \
     --cert-profile shortlived \
     --days 3 \
@@ -260,12 +269,15 @@ cmd_cert_issue() {
 # переключить выпущенный сертификат на webroot-режим продления (nginx уже
 # держит :80 к этому моменту — standalone больше не сработает)
 cmd_cert_switch_to_webroot() {
-  local ip="${1:?usage: cert-switch-to-webroot <ip>}"
+  local ip="${1:?usage: cert-switch-to-webroot <ip> [staging]}"
+  local staging="${2:-}"
   local webroot="$RENDER_DIR/nginx/acme"
+  local acme_server="letsencrypt"
+  [[ "$staging" == "staging" ]] && acme_server="letsencrypt_test"
   "$ACME_BIN" --home "$ACME_HOME" --set-notify-hook null >/dev/null 2>&1 || true
   # meняем challenge-alias на webroot без переиздания сертификата
   sed -i "s#^Le_Webroot=.*#Le_Webroot='${webroot}'#" "$ACME_HOME/${ip}_ecc/${ip}.conf" 2>/dev/null || \
-    "$ACME_BIN" --home "$ACME_HOME" --issue -d "$ip" -w "$webroot" --server letsencrypt --cert-profile shortlived --days 3 --force
+    "$ACME_BIN" --home "$ACME_HOME" --issue -d "$ip" -w "$webroot" --server "$acme_server" --cert-profile shortlived --days 3 --force
   log "cert-switch-to-webroot готово"
 }
 
