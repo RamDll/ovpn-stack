@@ -539,7 +539,7 @@ save_state
   echo
   echo "== Порты =="
   echo "SSH:      ${SSH_PORT}/tcp"
-  echo "Xray/3x-ui: 443/tcp"
+  [[ -n "$XUI_BASE_PATH" ]]  && echo "Xray/3x-ui: 443/tcp"
   echo "nginx (панели): 8443/tcp"
   echo "ACME:     80/tcp"
   [[ -n "$OVPN_PORT_ARG" ]] && echo "OpenVPN:  ${OVPN_PORT_ARG}/udp"
