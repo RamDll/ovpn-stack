@@ -54,8 +54,8 @@ usage() {
   --staging        ACME staging Let's Encrypt — серт НЕ доверенный браузером,
                    но высокие лимиты: для повторных тест-прогонов установщика
   --no-key-copy    не копировать приватный ключ в ~/.ssh (по умолчанию —
-                   копирует в ~/.ssh/ovpn-stack-<ip>, чтобы клон был не нужен;
-                   ~/.ssh/config не трогается в любом случае)
+                   копирует в ~/.ssh/id_ed25519, если слот свободен, иначе
+                   в ~/.ssh/ovpn-stack-<ip>; ~/.ssh/config не трогается)
   -h, --help       эта справка
 
 root-пароль всегда вводится интерактивно; пароль пользователя — тоже
@@ -187,7 +187,7 @@ HOSTKEY_RAW="$STATE_DIR/hostkey.raw"
 SSH_USER=""; SSH_PORT=""; USER_PASSWORD=""; INSTALLED_MODES=""; DEST=""
 XUI_BASE_PATH=""; SUB_PATH=""; SUB_JSON_PATH=""; XUI_ADMIN_PASS=""
 OVPN_ADMIN_PATH=""; OVPN_ADMIN_PASS=""; OVPN_PORT=""
-SSH_KEY_HOME=""
+SSH_KEY_HOME=""; SSH_KEY_DEFAULT=0
 
 # Пул доменов для REALITY SNI (см. блок «Шаг 5»). Крупные, всегда живые
 # HTTPS-сайты на TLS 1.3, которые почти нигде не блокируют. Дефолт —
@@ -229,10 +229,17 @@ EOF
 # install/.state/<ip>/ (в .gitignore, заново не создаётся), а на сервере
 # после хардненинга нет ни root, ни пароля — удалить клон без копии ключа =
 # потерять доступ. Копируем только файл ключа; ~/.ssh/config НЕ трогаем
-# (личный файл пользователя) — готовую команду ssh печатаем в сводке.
+# (личный файл пользователя).
+#
+# Если слот дефолтного имени ~/.ssh/id_ed25519 свободен (или там уже наш
+# ключ) — кладём туда: ssh подхватывает его сам, в сводке команда без -i.
+# Иначе (там чужой личный ключ) — кладём в ~/.ssh/ovpn-stack-<ip> и в
+# сводке команда с -i. Перезаписывать чужой id_ed25519 нельзя.
 install_ssh_key() {
   local ssh_dir="$HOME/.ssh"
-  local dst_key="$ssh_dir/ovpn-stack-${SAFE_IP}"
+  local def="$ssh_dir/id_ed25519"
+  local named="$ssh_dir/ovpn-stack-${SAFE_IP}"
+  local dst
 
   [[ -n "${HOME:-}" && -f "$KEY_FILE" ]] || {
     warn "пропускаю копию ключа в ~/.ssh (нет HOME/ключа) — доступ только через клон"
@@ -240,11 +247,27 @@ install_ssh_key() {
   }
 
   mkdir -p "$ssh_dir"; chmod 700 "$ssh_dir"
-  cp -f "$KEY_FILE" "$dst_key"; chmod 600 "$dst_key"
-  cp -f "${KEY_FILE}.pub" "${dst_key}.pub"; chmod 644 "${dst_key}.pub"
 
-  SSH_KEY_HOME="$dst_key"
-  ok "ключ скопирован в $dst_key — каталог install/.state/ можно удалять"
+  if [[ ! -e "$def" && ! -e "${def}.pub" ]]; then
+    dst="$def"
+  elif [[ -f "${def}.pub" ]] && cmp -s "${KEY_FILE}.pub" "${def}.pub"; then
+    dst="$def"                       # там уже этот же ключ — просто обновим
+  else
+    dst="$named"
+    warn "в ~/.ssh уже есть личный id_ed25519 — кладу ключ как $(basename "$named"),"
+    warn "в команде подключения будет -i (ssh не берёт нестандартные имена сам)"
+  fi
+
+  cp -f "$KEY_FILE" "$dst"; chmod 600 "$dst"
+  cp -f "${KEY_FILE}.pub" "${dst}.pub"; chmod 644 "${dst}.pub"
+
+  if [[ "$dst" == "$def" ]]; then
+    SSH_KEY_DEFAULT=1; SSH_KEY_HOME="$def"
+    ok "ключ скопирован в $def (ssh берёт его сам) — каталог install/.state/ можно удалять"
+  else
+    SSH_KEY_DEFAULT=0; SSH_KEY_HOME="$named"
+    ok "ключ скопирован в $named — каталог install/.state/ можно удалять"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -645,7 +668,10 @@ fi
   echo "Сгенерировано: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo
   echo "== Доступ =="
-  if [[ -n "$SSH_KEY_HOME" ]]; then
+  if [[ "$SSH_KEY_DEFAULT" -eq 1 ]]; then
+    echo "ssh -p ${SSH_PORT} ${SSH_USER}@${IP}"
+    echo "  (ключ в ${SSH_KEY_HOME} — ssh берёт его сам; install/.state/ можно удалять)"
+  elif [[ -n "$SSH_KEY_HOME" ]]; then
     echo "ssh -i '${SSH_KEY_HOME}' -p ${SSH_PORT} ${SSH_USER}@${IP}"
     echo "  (ключ скопирован в ${SSH_KEY_HOME} — каталог install/.state/ можно удалять)"
   else
@@ -724,4 +750,8 @@ if [[ "$HAVE_QRENCODE" -eq 1 && -n "$VLESS_LINE" ]]; then
 fi
 
 echo
-ok "Готово. Подключение: ssh -i '${SSH_KEY_HOME:-$KEY_FILE}' -p ${SSH_PORT} ${SSH_USER}@${IP}"
+if [[ "$SSH_KEY_DEFAULT" -eq 1 ]]; then
+  ok "Готово. Подключение: ssh -p ${SSH_PORT} ${SSH_USER}@${IP}"
+else
+  ok "Готово. Подключение: ssh -i '${SSH_KEY_HOME:-$KEY_FILE}' -p ${SSH_PORT} ${SSH_USER}@${IP}"
+fi
