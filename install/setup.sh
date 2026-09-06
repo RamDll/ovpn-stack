@@ -187,6 +187,7 @@ HOSTKEY_RAW="$STATE_DIR/hostkey.raw"
 SSH_USER=""; SSH_PORT=""; USER_PASSWORD=""; INSTALLED_MODES=""; DEST=""
 XUI_BASE_PATH=""; SUB_PATH=""; SUB_JSON_PATH=""; XUI_ADMIN_PASS=""
 OVPN_ADMIN_PATH=""; OVPN_ADMIN_PASS=""; OVPN_PORT=""
+XUI_PORT=""; SUB_PORT=""
 SSH_KEY_HOME=""; SSH_KEY_DEFAULT=0
 
 # Пул доменов для REALITY SNI (см. блок «Шаг 5»). Крупные, всегда живые
@@ -221,6 +222,8 @@ XUI_ADMIN_PASS='$XUI_ADMIN_PASS'
 OVPN_ADMIN_PATH='$OVPN_ADMIN_PATH'
 OVPN_ADMIN_PASS='$OVPN_ADMIN_PASS'
 OVPN_PORT='$OVPN_PORT'
+XUI_PORT='$XUI_PORT'
+SUB_PORT='$SUB_PORT'
 EOF
   chmod 600 "$STATE_ENV"
 }
@@ -504,7 +507,19 @@ if [[ "$MODE" == "openvpn" || "$MODE" == "all" ]]; then
   OVPN_PORT_ARG="$OVPN_PORT"
 fi
 
-harden_cmd="sudo -S -p '' -- bash -c '${BOOTSTRAP} nftables-apply ${SSH_PORT} ${MODE} ${OVPN_PORT_ARG} && ${BOOTSTRAP} sshd-harden ${SSH_PORT}'"
+# Порты панели и sub-сервера 3x-ui: наружу закрыты (docker-only в nftables),
+# но 3x-ui в самой панели ругается на «широко известные» 2053/2096 —
+# рандомизируем. Значения стабильны (state.env), нужны и здесь (firewall),
+# и позже (xui-configure / nginx). 2053/2096 — только fallback совместимости.
+XUI_PORT_ARG=""; SUB_PORT_ARG=""
+if [[ "$MODE" == "vless" || "$MODE" == "all" ]]; then
+  gen_port() { echo "$(( (RANDOM % 40001) + 20000 ))"; }
+  while [[ -z "$XUI_PORT" || "$XUI_PORT" == "$SSH_PORT" || "$XUI_PORT" == "$OVPN_PORT" ]]; do XUI_PORT="$(gen_port)"; done
+  while [[ -z "$SUB_PORT" || "$SUB_PORT" == "$SSH_PORT" || "$SUB_PORT" == "$OVPN_PORT" || "$SUB_PORT" == "$XUI_PORT" ]]; do SUB_PORT="$(gen_port)"; done
+  XUI_PORT_ARG="$XUI_PORT"; SUB_PORT_ARG="$SUB_PORT"
+fi
+
+harden_cmd="sudo -S -p '' -- bash -c '${BOOTSTRAP} nftables-apply ${SSH_PORT} ${MODE} ${OVPN_PORT_ARG:-0} ${XUI_PORT_ARG:-0} ${SUB_PORT_ARG:-0} && ${BOOTSTRAP} sshd-harden ${SSH_PORT}'"
 if ! printf '%s\n' "$USER_PASSWORD" | ssh_key "$harden_cmd"; then
   die "nftables/sshd hardening не прошёл на сервере — соединение на порт $CONN_PORT должно быть ещё живо, почини вручную по логам выше"
 fi
@@ -563,7 +578,9 @@ fi
 ok "сертификат выпущен (standalone, порт 80)"
 
 # -------------------------------------------------------------------------
-XUI_PORT="2053"
+# XUI_PORT / SUB_PORT сгенерированы на шаге firewall (нужны для nftables),
+# fallback на дефолты — только для странного пути, где сюда дошли без них.
+XUI_PORT="${XUI_PORT:-2053}"; SUB_PORT="${SUB_PORT:-2096}"
 gen_hex()  { openssl rand -hex "$1"; }
 gen_pass() { openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 20; }
 if [[ "$MODE" == "vless" || "$MODE" == "all" ]]; then
@@ -573,10 +590,10 @@ if [[ "$MODE" == "vless" || "$MODE" == "all" ]]; then
   [[ -n "$SUB_JSON_PATH" ]] || SUB_JSON_PATH="/json-$(gen_hex 8)/"
   [[ -n "$XUI_ADMIN_PASS" ]] || XUI_ADMIN_PASS="$(gen_pass)"
   XUI_ADMIN_USER="admin"
-  step "Настраиваю 3x-ui (webBasePath, логин панели)"
+  step "Настраиваю 3x-ui (webBasePath, порт панели ${XUI_PORT}, логин)"
   ssh_key "${INSTALLVPN} xui-configure 3x-ui '${XUI_BASE_PATH}' '${XUI_ADMIN_USER}' '${XUI_ADMIN_PASS}' '${XUI_PORT}'"
-  step "Включаю подписку 3x-ui (за nginx :8443, путь ${SUB_PATH})"
-  sudo_key "${INSTALLVPN} xui-enable-sub 3x-ui '${SUB_PATH}' '${SUB_JSON_PATH}' '${IP}'"
+  step "Включаю подписку 3x-ui (за nginx :8443, путь ${SUB_PATH}, порт ${SUB_PORT})"
+  sudo_key "${INSTALLVPN} xui-enable-sub 3x-ui '${SUB_PATH}' '${SUB_JSON_PATH}' '${IP}' '${SUB_PORT}'"
 fi
 if [[ "$MODE" == "openvpn" || "$MODE" == "all" ]]; then
   # ovpn-admin не умеет проверять пароль сам (в отличие от 3x-ui) —
@@ -589,7 +606,7 @@ if [[ "$MODE" == "openvpn" || "$MODE" == "all" ]]; then
 fi
 
 step "Рендер и запуск nginx (последним — сертификат уже есть)"
-ssh_key "${INSTALLVPN} render-nginx '${MODE}' '${XUI_BASE_PATH}' '${XUI_PORT}' '${OVPN_ADMIN_PATH}' '${SUB_PATH}' '${SUB_JSON_PATH}'"
+ssh_key "${INSTALLVPN} render-nginx '${MODE}' '${XUI_BASE_PATH}' '${XUI_PORT}' '${OVPN_ADMIN_PATH}' '${SUB_PATH}' '${SUB_JSON_PATH}' '${SUB_PORT}'"
 ssh_key "${INSTALLVPN} compose-up-service nginx"
 ssh_key "${INSTALLVPN} nginx-reload"
 sudo_key "${INSTALLVPN} cert-switch-to-webroot '${IP}' '${ACME_STAGING}'"

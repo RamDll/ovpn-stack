@@ -338,12 +338,16 @@ cmd_check_port_free() {
   if port_in_use "$port"; then echo "BUSY"; else echo "FREE"; fi
 }
 
-# nftables-apply <ssh_port> <mode:vless|openvpn|all> [ovpn_udp_port]
+# nftables-apply <ssh_port> <mode:vless|openvpn|all> [ovpn_udp_port] [xui_port] [sub_port]
+# «0» в любой позиции порта = не задан (передаётся из setup.sh как плейсхолдер,
+# чтобы не сбить позиционные аргументы, когда OpenVPN-порта нет, а панельные есть).
 cmd_nftables_apply() {
   need_root nftables-apply
-  local ssh_port="${1:?usage: nftables-apply <ssh_port> <mode> [ovpn_udp_port]}"
+  local ssh_port="${1:?usage: nftables-apply <ssh_port> <mode> [ovpn_udp_port] [xui_port] [sub_port]}"
   local mode="${2:?mode required: vless|openvpn|all}"
-  local ovpn_port="${3:-}"
+  local ovpn_port="${3:-}"; [[ "$ovpn_port" == "0" ]] && ovpn_port=""
+  local xui_port="${4:-}";  [[ -z "$xui_port" || "$xui_port" == "0" ]] && xui_port=2053
+  local sub_port="${5:-}";  [[ -z "$sub_port" || "$sub_port" == "0" ]] && sub_port=2096
   mkdir -p "$STATE_DIR"
 
   # подстраховка: system-prep обычно ставит nftables, но если сюда пришли
@@ -360,12 +364,12 @@ cmd_nftables_apply() {
 
   local vless_block=""
   if [[ "$mode" == "vless" || "$mode" == "all" ]]; then
-    # 3x-ui слушает 0.0.0.0 на 2053 (панель) и 2096 (sub-сервер) —
+    # 3x-ui слушает 0.0.0.0 на $xui_port (панель) и $sub_port (sub-сервер) —
     # 127.0.0.1 недостижим из netns nginx, см. install-vpn.sh xui-configure.
     # Поэтому в INPUT, а не только в forward: пускаем оба порта исключительно
     # с docker-интерфейсов (nginx проксирует их на :8443 по неочевидным
     # путям), наружу в интернет они закрыты политикой drop.
-    vless_block="        tcp dport 443 accept  # Xray (3x-ui) — VLESS Reality\n        iifname \"docker0\" tcp dport 2053 accept  # 3x-ui панель — только для nginx-прокси\n        iifname \"br-*\" tcp dport 2053 accept\n        iifname \"docker0\" tcp dport 2096 accept  # 3x-ui sub-сервер — только для nginx-прокси\n        iifname \"br-*\" tcp dport 2096 accept"
+    vless_block="        tcp dport 443 accept  # Xray (3x-ui) — VLESS Reality\n        iifname \"docker0\" tcp dport ${xui_port} accept  # 3x-ui панель — только для nginx-прокси\n        iifname \"br-*\" tcp dport ${xui_port} accept\n        iifname \"docker0\" tcp dport ${sub_port} accept  # 3x-ui sub-сервер — только для nginx-прокси\n        iifname \"br-*\" tcp dport ${sub_port} accept"
   fi
 
   local ovpn_block=""
