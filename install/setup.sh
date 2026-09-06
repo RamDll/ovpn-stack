@@ -257,10 +257,14 @@ else
   # ПЕРВОЕ ПОДКЛЮЧЕНИЕ — root-пароль, только здесь
   # =========================================================================
   step "Первое подключение к $IP"
-  read -rsp "root-пароль: " ROOT_PASSWORD; echo
-  [[ -n "$ROOT_PASSWORD" ]] || die "пустой пароль"
+  if [[ "$SSH_ASKPASS_OK" -eq 1 ]]; then
+    read -rsp "root-пароль: " ROOT_PASSWORD; echo
+    [[ -n "$ROOT_PASSWORD" ]] || die "пустой пароль"
+  else
+    ROOT_PASSWORD=""   # без askpass пароль спросит сам ssh на TTY
+  fi
 
-  info "забираю host key..."
+  info "забираю host key... (root и пароль на сервере ещё не тронуты)"
   if ! ssh-keyscan -p 22 -T 10 -t ed25519 "$IP" > "$HOSTKEY_RAW" 2>/dev/null || [[ ! -s "$HOSTKEY_RAW" ]]; then
     ssh-keyscan -p 22 -T 10 "$IP" > "$HOSTKEY_RAW" 2>/dev/null
   fi
@@ -284,11 +288,13 @@ else
     chmod 700 "$ASKPASS"
     export OVPN_STACK_SSH_PW="$ROOT_PASSWORD"
     export SSH_ASKPASS="$ASKPASS" SSH_ASKPASS_REQUIRE=force
+    PW_PROMPTS=1   # одна попытка на вызов — повторный ввод крутим сами (ниже)
   else
     warn "OpenSSH старше 8.4 — root-пароль спросят вручную несколько раз подряд"
+    PW_PROMPTS=3   # без askpass ssh сам даёт 3 попытки в одном вызове
   fi
-  ssh_root() { ssh -o "UserKnownHostsFile=$KNOWN_HOSTS" -o StrictHostKeyChecking=yes -p 22 "root@$IP" "$@"; }
-  scp_root() { scp -o "UserKnownHostsFile=$KNOWN_HOSTS" -o StrictHostKeyChecking=yes -P 22 "$@"; }
+  ssh_root() { ssh -o NumberOfPasswordPrompts="$PW_PROMPTS" -o "UserKnownHostsFile=$KNOWN_HOSTS" -o StrictHostKeyChecking=yes -p 22 "root@$IP" "$@"; }
+  scp_root() { scp -o NumberOfPasswordPrompts="$PW_PROMPTS" -o "UserKnownHostsFile=$KNOWN_HOSTS" -o StrictHostKeyChecking=yes -P 22 "$@"; }
 
   # снять пароль из окружения и удалить хелпер, как только он больше не нужен
   drop_root_pw() {
@@ -296,8 +302,21 @@ else
     rm -f "$ASKPASS" 2>/dev/null || true
   }
 
+  # неверный root-пароль на этом шаге — НЕ фатально: сервер ещё не тронут,
+  # переспрашиваем (до 3 раз в askpass-режиме; без askpass 3 попытки даёт
+  # сам ssh в одном вызове).
   info "проверяю вход по паролю..."
-  ssh_root true >/dev/null || die "не удалось войти по root-паролю"
+  attempt=1
+  while ! ssh_root true >/dev/null 2>&1; do
+    if [[ "$SSH_ASKPASS_OK" -ne 1 || "$attempt" -ge 3 ]]; then
+      die "root-пароль не подошёл. Проверь пароль и IP ($IP), запусти снова — на сервере ничего не менялось."
+    fi
+    attempt=$((attempt + 1))
+    warn "root-пароль не подошёл — попробуй ещё раз (${attempt}/3)"
+    read -rsp "root-пароль: " ROOT_PASSWORD; echo
+    [[ -n "$ROOT_PASSWORD" ]] || die "пустой пароль"
+    export OVPN_STACK_SSH_PW="$ROOT_PASSWORD"
+  done
   ok "вход по root-паролю работает"
 
   # -------------------------------------------------------------------------
