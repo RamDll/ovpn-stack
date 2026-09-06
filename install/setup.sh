@@ -536,8 +536,13 @@ VLESS_SUBID=""
 if [[ "$MODE" == "vless" || "$MODE" == "all" ]]; then
   step "Шаг 5 — первый VLESS+Reality инбаунд"
   if [[ -z "$DEST" ]]; then
-    read -rp "Домен для SNI (правдоподобное имя, к серверу не подключаемся — README §9): " DEST
+    if [[ -t 0 ]]; then
+      info "SNI — правдоподобное имя для маскировки REALITY. Сервер к нему НЕ"
+      info "подключается, оно только в ссылке клиента (см. README §9)."
+      read -rp "  Домен для SNI [Enter = www.microsoft.com]: " DEST
+    fi
     [[ -n "$DEST" ]] || DEST="www.microsoft.com"
+    info "SNI: $DEST"
   else
     info "SNI: $DEST (из --sni / state.env)"
   fi
