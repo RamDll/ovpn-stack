@@ -48,8 +48,9 @@ usage() {
   --ip <addr>      IP сервера (иначе спросит)
   --user <name>    имя sudo-пользователя (иначе спросит, дефолт — whoami)
   --ssh-port <p>   порт SSH после хардненинга (иначе случайный 20000-60000)
-  --sni <domain>   домен для REALITY SNI (иначе спросит; при повторном
-                   прогоне берётся из state.env)
+  --sni <domain>   домен для REALITY SNI (иначе спросит; Enter в промпте —
+                   случайный из встроенного пула; при повторном прогоне
+                   берётся из state.env)
   --staging        ACME staging Let's Encrypt — серт НЕ доверенный браузером,
                    но высокие лимиты: для повторных тест-прогонов установщика
   -h, --help       эта справка
@@ -181,6 +182,17 @@ HOSTKEY_RAW="$STATE_DIR/hostkey.raw"
 SSH_USER=""; SSH_PORT=""; USER_PASSWORD=""; INSTALLED_MODES=""; DEST=""
 XUI_BASE_PATH=""; SUB_PATH=""; SUB_JSON_PATH=""; XUI_ADMIN_PASS=""
 OVPN_ADMIN_PATH=""; OVPN_ADMIN_PASS=""; OVPN_PORT=""
+
+# Пул доменов для REALITY SNI (см. блок «Шаг 5»). Крупные, всегда живые
+# HTTPS-сайты на TLS 1.3, которые почти нигде не блокируют. Дефолт —
+# случайный из пула: если у всех один и тот же SNI, это лишний признак
+# для DPI. Свой домен — флаг --sni.
+SNI_POOL=(
+  www.microsoft.com  www.bing.com       www.apple.com     www.icloud.com
+  swscan.apple.com   dl.google.com      www.samsung.com   www.nvidia.com
+  www.amd.com        www.intel.com      www.cloudflare.com
+  cdn.jsdelivr.net   www.tesla.com      www.sap.com       www.oracle.com
+)
 # shellcheck disable=SC1090
 [[ -f "$STATE_ENV" ]] && source "$STATE_ENV"
 
@@ -536,12 +548,29 @@ VLESS_SUBID=""
 if [[ "$MODE" == "vless" || "$MODE" == "all" ]]; then
   step "Шаг 5 — первый VLESS+Reality инбаунд"
   if [[ -z "$DEST" ]]; then
+    sni_default="${SNI_POOL[RANDOM % ${#SNI_POOL[@]}]}"
     if [[ -t 0 ]]; then
-      info "SNI — правдоподобное имя для маскировки REALITY. Сервер к нему НЕ"
-      info "подключается, оно только в ссылке клиента (см. README §9)."
-      read -rp "  Домен для SNI [Enter = www.microsoft.com]: " DEST
+      cat >&2 <<EOF
+    ── SNI для VLESS Reality ─────────────────────────────────────────
+    SNI — это доменное имя, которое КЛИЕНТ вписывает в своё TLS-
+    рукопожатие. Для наблюдателя (DPI провайдера) трафик выглядит как
+    обычный HTTPS к этому сайту — в этом вся маскировка Reality.
+
+    Сервер к этому домену НЕ подключается: реальный dest — локальная
+    заглушка (nginx на 127.0.0.1:8444). Домен нужен только чтобы быть
+    правдоподобным. Требования: крупный, всегда живой HTTPS-сайт на
+    TLS 1.3, который НЕ заблокирован в твоей стране (иначе и твой VPN
+    будет «блокирован» на вид). НЕ бери домен, который сам под баном.
+
+    Значение уходит в ссылку клиента (sni=…) и в инбаунд 3x-ui. Смена
+    потом = переделывать все розданные ссылки. Меняется флагом --sni.
+    Enter — случайный из встроенного пула (у всех разный SNI — меньше
+    шансов попасть под сигнатуру).
+    ─────────────────────────────────────────────────────────────────
+EOF
+      read -rp "  Домен для SNI [Enter = $sni_default]: " DEST
     fi
-    [[ -n "$DEST" ]] || DEST="www.microsoft.com"
+    [[ -n "$DEST" ]] || DEST="$sni_default"
     info "SNI: $DEST"
   else
     info "SNI: $DEST (из --sni / state.env)"
