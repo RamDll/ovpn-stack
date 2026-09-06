@@ -478,7 +478,13 @@ ok "сервисы подняты"
 
 step "Сертификат (Let's Encrypt на IP, acme.sh)"
 sudo_key "${INSTALLVPN} acme-install"
-sudo_key "${INSTALLVPN} cert-issue '${IP}' '' '${ACME_STAGING}'"
+cert_rc=0
+sudo_key "${INSTALLVPN} cert-issue '${IP}' '' '${ACME_STAGING}'" || cert_rc=$?
+if [[ "$cert_rc" -ne 0 ]]; then
+  # cert-issue (rc=3 при rate-limit) уже напечатал подробности выше.
+  # Всё до этого шага идемпотентно и сохранено — перезапуск продолжит отсюда.
+  die "выпуск сертификата не прошёл (см. вывод выше). Установка остановлена; перезапусти ту же команду позже — она продолжит с этого шага."
+fi
 ok "сертификат выпущен (standalone, порт 80)"
 
 # -------------------------------------------------------------------------

@@ -251,12 +251,35 @@ cmd_cert_issue() {
   local email_arg=()
   [[ -n "$email" ]] && email_arg=(--accountemail "$email")
 
-  "$ACME_BIN" --home "$ACME_HOME" --issue --standalone \
+  # acme.sh не даём убить скрипт через set -e — сами разбираем ошибку,
+  # чтобы на rate-limit выдать понятное сообщение, а не сырой дамп 429.
+  local issue_out issue_rc=0
+  issue_out=$("$ACME_BIN" --home "$ACME_HOME" --issue --standalone \
     --server "$acme_server" \
     -d "$ip" \
     --cert-profile shortlived \
     --days 3 \
-    "${email_arg[@]}"
+    "${email_arg[@]}" 2>&1) || issue_rc=$?
+  printf '%s\n' "$issue_out"
+
+  if [[ "$issue_rc" -ne 0 ]]; then
+    if grep -qiE 'rateLimited|too many certificates|status.*429' <<<"$issue_out"; then
+      local retry
+      retry=$(grep -oiE 'retry after [0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}( ?UTC)?' <<<"$issue_out" | head -1)
+      log ""
+      log "═══ Let's Encrypt RATE LIMIT ═══"
+      log "На этот IP уже выпущено 5 сертификатов за последние 168 ч (лимит LE)."
+      [[ -n "$retry" ]] && log "Следующий слот освободится: ${retry#[Rr]etry after }"
+      log ""
+      log "Всё, что сделано до этого шага, СОХРАНЕНО (SSH-порт, пользователь,"
+      log "docker, образы). Доделать — перезапустить ту же команду после сброса"
+      log "лимита; либо прямо сейчас закончить на staging-сертификате:"
+      log "    ./setup.sh --all --ip ${ip} --staging"
+      log "(staging: браузер покажет «не защищено», потом перевыпустить боевой)"
+      exit 3
+    fi
+    die "acme.sh --issue не прошёл (rc=$issue_rc) — вывод выше"
+  fi
 
   "$ACME_BIN" --home "$ACME_HOME" --install-cert -d "$ip" \
     --key-file       "$cert_dir/privkey.pem" \
