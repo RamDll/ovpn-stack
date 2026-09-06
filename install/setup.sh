@@ -184,21 +184,29 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# username по умолчанию — $USER домашнего ПК, нижний регистр
+# sudo-пользователь на сервере: имя (дефолт — $USER домашнего ПК) и пароль
+# (Enter — сгенерировать). При повторном прогоне берутся из state.env,
+# промпты пропускаются. Флаг --user переопределяет имя без вопроса.
 # ---------------------------------------------------------------------------
 valid_username() { [[ "$1" =~ ^[a-z_][a-z0-9_-]*$ ]] && [[ ${#1} -le 32 ]]; }
 
 if [[ -z "$SSH_USER" ]]; then
   candidate="$(whoami | tr '[:upper:]' '[:lower:]')"
-  if valid_username "$candidate"; then
-    SSH_USER="$candidate"
-  else
-    warn "имя '$candidate' не подходит под ^[a-z_][a-z0-9_-]*\$"
-  fi
+  valid_username "$candidate" || candidate=""
+  read -rp "Имя пользователя на сервере${candidate:+ [$candidate]}: " SSH_USER
+  SSH_USER="${SSH_USER:-$candidate}"
 fi
 while ! valid_username "${SSH_USER:-}"; do
-  read -rp "Имя пользователя на сервере (латиница, нижний регистр): " SSH_USER
+  read -rp "Имя пользователя (латиница, ^[a-z_][a-z0-9_-]*\$): " SSH_USER
 done
+
+if [[ -z "$USER_PASSWORD" ]]; then
+  read -rsp "Пароль пользователя $SSH_USER для sudo (Enter — сгенерировать): " USER_PASSWORD; echo
+  if [[ -n "$USER_PASSWORD" && ${#USER_PASSWORD} -lt 8 ]]; then
+    warn "пароль короче 8 символов — на всякий случай генерирую вместо него"
+    USER_PASSWORD=""
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # пробуем уже рабочий доступ по ключу (идемпотентный повторный прогон —
@@ -308,6 +316,7 @@ else
   step "Шаг 1 — пользователь $SSH_USER"
   if [[ -z "$USER_PASSWORD" ]]; then
     USER_PASSWORD="$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 24)"
+    info "пароль пользователя сгенерирован — будет в сводке"
   fi
   printf '%s\n' "$USER_PASSWORD" | ssh_root "/root/ovpn-stack-bootstrap.sh user-create '$SSH_USER'"
   ok "пользователь создан/подтверждён, добавлен в sudo"
