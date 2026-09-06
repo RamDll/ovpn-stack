@@ -492,15 +492,21 @@ raw xray-core не проверяет x509-цепочку синтетическ
 - не из подборок «лучшие dest для Reality» — по инерции от старого
   подхода, но visual-часть та же самая эвристика: не хочется совпадать
   с тысячами других серверов
+- **без `apple`/`icloud`** — xray-core на них пишет `REALITY: Choosing
+  apple, icloud, etc. as the target may get your IP blocked by the GFW`
+  (проверено в логе 3x-ui на живом сервере). `google` в этот варнинг не
+  попадает, но `dl.google.com` — классический «рекомендованный dest», по
+  критерию выше тоже убран из пула.
 
 `setup.sh` держит встроенный пул таких доменов (`SNI_POOL` в начале
-скрипта: `www.microsoft.com`, `www.apple.com`, `dl.google.com`,
-`www.cloudflare.com`, `cdn.jsdelivr.net` и т.д.). Промпт на «Шаг 5»
-подробно объясняет, что такое SNI; **Enter выбирает случайный домен из
-пула** — если у всех серверов один и тот же SNI, это лишний признак для
-DPI. Свой домен — `--sni <domain>` или ввод в промпте. Значение
-фиксируется в `state.env`: сменить потом = переделывать все розданные
-клиентские ссылки.
+скрипта: `www.microsoft.com`, `www.cloudflare.com`, `cdn.jsdelivr.net`,
+`www.samsung.com`, `www.nvidia.com`, `www.dell.com`, `www.cisco.com`
+и т.д. — 16 крупных tech-вендоров). Промпт на «Шаг 5» подробно
+объясняет, что такое SNI; **Enter выбирает случайный домен из пула** —
+если у всех серверов один и тот же SNI, это лишний признак для DPI.
+Свой домен — `--sni <domain>` или ввод в промпте. Значение фиксируется
+в `state.env`: сменить потом = переделывать все розданные клиентские
+ссылки.
 
 ### Подписка 3x-ui
 
@@ -698,6 +704,35 @@ Go-генератор конфига в v3.6.0 выкидывает `minClientVe
 
 Что ломалось на живых прогонах и почему код такой. Новые находки — сразу
 под этим заголовком.
+
+## 2026-09-07 — проверка живого сервера `REDACTED-IP` (`--all`)
+
+Прогнал полную ревизию после чистой установки. Всё в норме:
+
+- 4 контейнера up (3 healthy, у 3x-ui healthcheck'а нет), диск 10%,
+  RAM 541/1973 (swap не создан — 1973 > порога 1900);
+- nftables `policy drop` на input+forward, открыты SSH/443/80/8443/udp,
+  `2053`/`2096` только с docker-интерфейсов (снаружи `/dev/tcp` — закрыты);
+- **вход по паролю реально закрыт**: `ssh -o PubkeyAuthentication=no`
+  на порт 23346 → сервер отдаёт `Authentications that can continue:
+  publickey` (метод `password` не предлагается); порт 22 → timeout;
+- `sshd -T`: `permitrootlogin no`, `passwordauthentication no`,
+  `kbdinteractiveauthentication no`;
+- страховочные таймеры сняты (остался только `ovpn-stack-acme-renew`);
+- LE-серт `CN=YE2`, валиден 6 суток, таймер продления активен;
+- инбаунд: `fp=firefox`, `pbk` 43 симв., `dest=127.0.0.1:8444`,
+  серт заглушки **с SAN**; трафик-тест loopback xray-клиентом — **5/5**,
+  egress = IP сервера;
+- подписка 200, `Profile-Web-Page-Url` c `:8443`; ovpn-admin 401→200.
+
+**Единственная находка — SNI из пула.** Инбаунд взял `swscan.apple.com`,
+xray в логе: `REALITY: Choosing apple, icloud, etc. as the target may
+get your IP blocked by the GFW`. Инбаунд работает (это WARNING), но
+apple/icloud из `SNI_POOL` убраны, `dl.google.com` тоже (классический
+«рекомендованный dest»). Взамен — dell/lenovo/cisco/qualcomm/hp
+(проверил: все TLS 1.3, отвечают).
+
+---
 
 ## 2026-09-06 — панель ovpn-admin показывает id контейнера; 3x-ui ругается на порт
 

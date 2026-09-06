@@ -194,11 +194,13 @@ SSH_KEY_HOME=""; SSH_KEY_DEFAULT=0
 # HTTPS-сайты на TLS 1.3, которые почти нигде не блокируют. Дефолт —
 # случайный из пула: если у всех один и тот же SNI, это лишний признак
 # для DPI. Свой домен — флаг --sni.
+# Без apple/icloud: xray-core на них пишет «Choosing apple, icloud, etc.
+# as the target may get your IP blocked by the GFW».
 SNI_POOL=(
-  www.microsoft.com  www.bing.com       www.apple.com     www.icloud.com
-  swscan.apple.com   dl.google.com      www.samsung.com   www.nvidia.com
-  www.amd.com        www.intel.com      www.cloudflare.com
-  cdn.jsdelivr.net   www.tesla.com      www.sap.com       www.oracle.com
+  www.microsoft.com  www.bing.com       www.samsung.com    www.nvidia.com
+  www.amd.com        www.intel.com      www.cloudflare.com cdn.jsdelivr.net
+  www.tesla.com      www.sap.com        www.oracle.com     www.dell.com
+  www.lenovo.com     www.cisco.com      www.qualcomm.com   www.hp.com
 )
 # shellcheck disable=SC1090
 [[ -f "$STATE_ENV" ]] && source "$STATE_ENV"
