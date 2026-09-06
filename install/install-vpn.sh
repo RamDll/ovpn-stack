@@ -593,9 +593,11 @@ cmd_vless_create() {
     # при повторном (идемпотентном) прогоне была полной, а не без ключа.
     python3 - "$existing" "$fingerprint" <<'PY'
 import json, sys
-data = json.loads(sys.argv[1]); fp = sys.argv[2]
+def as_obj(v):
+    return v if isinstance(v, (dict, list)) else json.loads(v)
+data = as_obj(sys.argv[1]); fp = sys.argv[2]
 ib = next(o for o in data["obj"] if o.get("remark") == "vless-reality")
-st = json.loads(ib["settings"]); ss = json.loads(ib["streamSettings"])
+st = as_obj(ib["settings"]); ss = as_obj(ib["streamSettings"])
 rs = ss.get("realitySettings", {})
 c = (st.get("clients") or [{}])[0]
 out = {

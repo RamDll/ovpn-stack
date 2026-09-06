@@ -170,7 +170,13 @@ SUMMARY_FILE="$STATE_DIR/summary.txt"
 STATE_ENV="$STATE_DIR/state.env"
 HOSTKEY_RAW="$STATE_DIR/hostkey.raw"
 
+# всё, что должно быть СТАБИЛЬНО между прогонами — генерится один раз,
+# сохраняется в state.env, при повторном прогоне переиспользуется. Иначе
+# каждый прогон менял бы webBasePath / пути подписки / пароли панелей и
+# ломал бы уже розданные ссылки.
 SSH_USER=""; SSH_PORT=""; USER_PASSWORD=""; INSTALLED_MODES=""; DEST=""
+XUI_BASE_PATH=""; SUB_PATH=""; SUB_JSON_PATH=""; XUI_ADMIN_PASS=""
+OVPN_ADMIN_PATH=""; OVPN_ADMIN_PASS=""
 # shellcheck disable=SC1090
 [[ -f "$STATE_ENV" ]] && source "$STATE_ENV"
 
@@ -186,6 +192,12 @@ SSH_PORT='$SSH_PORT'
 USER_PASSWORD='$USER_PASSWORD'
 INSTALLED_MODES='$INSTALLED_MODES'
 DEST='$DEST'
+XUI_BASE_PATH='$XUI_BASE_PATH'
+SUB_PATH='$SUB_PATH'
+SUB_JSON_PATH='$SUB_JSON_PATH'
+XUI_ADMIN_PASS='$XUI_ADMIN_PASS'
+OVPN_ADMIN_PATH='$OVPN_ADMIN_PATH'
+OVPN_ADMIN_PASS='$OVPN_ADMIN_PASS'
 EOF
   chmod 600 "$STATE_ENV"
 }
@@ -434,29 +446,27 @@ sudo_key "${INSTALLVPN} cert-issue '${IP}'"
 ok "сертификат выпущен (standalone, порт 80)"
 
 # -------------------------------------------------------------------------
-XUI_BASE_PATH=""
 XUI_PORT="2053"
-SUB_PATH=""
-SUB_JSON_PATH=""
-OVPN_ADMIN_PATH=""
+gen_hex()  { openssl rand -hex "$1"; }
+gen_pass() { openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 20; }
 if [[ "$MODE" == "vless" || "$MODE" == "all" ]]; then
-  XUI_BASE_PATH="/x-$(openssl rand -hex 4)/"
-  # неочевидные пути для подписки — как у панели (см. README §8, §11)
-  SUB_PATH="/sub-$(openssl rand -hex 8)/"
-  SUB_JSON_PATH="/json-$(openssl rand -hex 8)/"
+  # пути и пароль — из state.env, если уже есть; иначе генерим и сохраним ниже
+  [[ -n "$XUI_BASE_PATH" ]] || XUI_BASE_PATH="/x-$(gen_hex 4)/"
+  [[ -n "$SUB_PATH"      ]] || SUB_PATH="/sub-$(gen_hex 8)/"          # неочевидные, как у панели (README §8, §11)
+  [[ -n "$SUB_JSON_PATH" ]] || SUB_JSON_PATH="/json-$(gen_hex 8)/"
+  [[ -n "$XUI_ADMIN_PASS" ]] || XUI_ADMIN_PASS="$(gen_pass)"
   XUI_ADMIN_USER="admin"
-  XUI_ADMIN_PASS="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 20)"
   step "Настраиваю 3x-ui (webBasePath, логин панели)"
   ssh_key "${INSTALLVPN} xui-configure 3x-ui '${XUI_BASE_PATH}' '${XUI_ADMIN_USER}' '${XUI_ADMIN_PASS}' '${XUI_PORT}'"
   step "Включаю подписку 3x-ui (за nginx :8443, путь ${SUB_PATH})"
   sudo_key "${INSTALLVPN} xui-enable-sub 3x-ui '${SUB_PATH}' '${SUB_JSON_PATH}' '${IP}'"
 fi
 if [[ "$MODE" == "openvpn" || "$MODE" == "all" ]]; then
-  OVPN_ADMIN_PATH="/ovpn-$(openssl rand -hex 4)/"
   # ovpn-admin не умеет проверять пароль сам (в отличие от 3x-ui) —
   # секретный путь без Basic Auth перед ним означает вообще без защиты.
+  [[ -n "$OVPN_ADMIN_PATH" ]] || OVPN_ADMIN_PATH="/ovpn-$(gen_hex 4)/"
+  [[ -n "$OVPN_ADMIN_PASS" ]] || OVPN_ADMIN_PASS="$(gen_pass)"
   OVPN_ADMIN_USER="admin"
-  OVPN_ADMIN_PASS="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 20)"
   step "Basic Auth для панели ovpn-admin"
   ssh_key "${INSTALLVPN} htpasswd-generate '${OVPN_ADMIN_USER}' '${OVPN_ADMIN_PASS}'"
 fi
