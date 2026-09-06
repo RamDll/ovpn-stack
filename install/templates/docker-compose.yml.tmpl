@@ -86,6 +86,9 @@ services:
       OVPN_CCD_PATH: "/mnt/ccd"
       EASYRSA_PATH: "/mnt/easyrsa"
       OVPN_SERVER: "@@PUBLIC_IP@@:@@OVPN_UDP_PORT@@:udp"
+      # плашка «СЕРВЕР» в панели: без этого serverName() падает на
+      # os.Hostname() = id контейнера (ovpn-admin в своём UTS-namespace)
+      OVPN_SERVER_NAME: "@@PUBLIC_IP@@"
       OVPN_INDEX_PATH: "/mnt/easyrsa/pki/index.txt"
       OVPN_STAT_DB: "/mnt/stat/traffic.db"
       LOG_LEVEL: "info"

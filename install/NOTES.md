@@ -351,6 +351,13 @@ prune -f`) чистит BuildKit-кэш этой сборки — 2–4 ГБ, н
 диске половина запаса. Только в режимах с OpenVPN (в `--vless` сборки
 нет).
 
+Плашка «СЕРВЕР» в панели ovpn-admin (`sysinfo.go` → `serverName()`)
+берёт имя по приоритету: env `OVPN_SERVER_NAME` → файл `/etc/nodename`
+→ `os.Hostname()`. Контейнер сидит в `network_mode: "service:openvpn"`
+(общий netns, но **свой UTS-namespace**), поэтому `os.Hostname()` = id
+контейнера (`73cd2b7f139e`). Compose задаёт `OVPN_SERVER_NAME` =
+публичный IP — в панели видно `REDACTED-IP`, а не мусорный id.
+
 ### Volume — что нельзя потерять
 
 - **база 3x-ui** (SQLite): все клиенты и статистика
