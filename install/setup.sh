@@ -328,8 +328,11 @@ else
   # ПЕРВОЕ ПОДКЛЮЧЕНИЕ — root-пароль, только здесь
   # =========================================================================
   step "Первое подключение к $IP"
+  info "Нужен root-пароль сервера — тот, что прислал хостинг-провайдер"
+  info "при создании VPS (в письме или в панели управления сервером)."
+  info "Это единственный раз, когда он вводится; дальше — только по ключу."
   if [[ "$SSH_ASKPASS_OK" -eq 1 ]]; then
-    read -rsp "root-пароль: " ROOT_PASSWORD; echo
+    read -rsp "root-пароль от провайдера: " ROOT_PASSWORD; echo
     [[ -n "$ROOT_PASSWORD" ]] || die "пустой пароль"
   else
     ROOT_PASSWORD=""   # без askpass пароль спросит сам ssh на TTY
@@ -384,7 +387,8 @@ else
     fi
     attempt=$((attempt + 1))
     warn "root-пароль не подошёл — попробуй ещё раз (${attempt}/3)"
-    read -rsp "root-пароль: " ROOT_PASSWORD; echo
+    warn "это пароль от провайдера для root; не пароль пользователя $SSH_USER"
+    read -rsp "root-пароль от провайдера: " ROOT_PASSWORD; echo
     [[ -n "$ROOT_PASSWORD" ]] || die "пустой пароль"
     export OVPN_STACK_SSH_PW="$ROOT_PASSWORD"
   done
