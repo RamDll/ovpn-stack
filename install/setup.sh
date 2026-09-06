@@ -176,7 +176,7 @@ HOSTKEY_RAW="$STATE_DIR/hostkey.raw"
 # ломал бы уже розданные ссылки.
 SSH_USER=""; SSH_PORT=""; USER_PASSWORD=""; INSTALLED_MODES=""; DEST=""
 XUI_BASE_PATH=""; SUB_PATH=""; SUB_JSON_PATH=""; XUI_ADMIN_PASS=""
-OVPN_ADMIN_PATH=""; OVPN_ADMIN_PASS=""
+OVPN_ADMIN_PATH=""; OVPN_ADMIN_PASS=""; OVPN_PORT=""
 # shellcheck disable=SC1090
 [[ -f "$STATE_ENV" ]] && source "$STATE_ENV"
 
@@ -198,6 +198,7 @@ SUB_JSON_PATH='$SUB_JSON_PATH'
 XUI_ADMIN_PASS='$XUI_ADMIN_PASS'
 OVPN_ADMIN_PATH='$OVPN_ADMIN_PATH'
 OVPN_ADMIN_PASS='$OVPN_ADMIN_PASS'
+OVPN_PORT='$OVPN_PORT'
 EOF
   chmod 600 "$STATE_ENV"
 }
@@ -389,7 +390,9 @@ INSTALLVPN="/opt/ovpn-stack/install/install-vpn.sh"
 step "Шаг 2/3 — firewall и sshd hardening"
 OVPN_PORT_ARG=""
 if [[ "$MODE" == "openvpn" || "$MODE" == "all" ]]; then
-  OVPN_PORT="${OVPN_PORT:-$(( (RANDOM % 40001) + 20000 ))}"
+  # из state.env, если уже был — иначе случайный и сохраним (иначе каждый
+  # прогон менял бы UDP-порт OpenVPN и ломал розданные .ovpn-конфиги)
+  [[ -n "$OVPN_PORT" ]] || OVPN_PORT="$(( (RANDOM % 40001) + 20000 ))"
   OVPN_PORT_ARG="$OVPN_PORT"
 fi
 
