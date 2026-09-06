@@ -89,6 +89,56 @@ apt_do() {
   done
   die "apt-get $* не прошёл после 3 попыток (dpkg-lock/сеть?)"
 }
+# Сборка образа ovpn-admin (vue-tsc + vite build фронта, go build бэка) на
+# < ~2 ГБ RAM без swap ловит OOM-kill. Если памяти мало и swap не активен —
+# делаем /swapfile 2 ГБ. Идемпотентно; на OpenVZ/LXC (swapon не поддержан)
+# тихо продолжаем без него.
+SWAPFILE=/swapfile
+ensure_swap() {
+  local mem_kb mem_mb
+  mem_kb=$(awk '/^MemTotal:/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+  mem_mb=$(( mem_kb / 1024 ))
+  local swap_kb
+  swap_kb=$(awk '/^SwapTotal:/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+
+  if (( mem_mb >= 1900 )); then
+    log "RAM ${mem_mb} МБ — swap не нужен"
+    return 0
+  fi
+  if (( swap_kb > 512 * 1024 )); then
+    log "RAM ${mem_mb} МБ, но swap уже есть ($(( swap_kb / 1024 )) МБ) — оставляю как есть"
+    return 0
+  fi
+  if swapon --show=NAME --noheadings 2>/dev/null | grep -qx "$SWAPFILE"; then
+    log "$SWAPFILE уже подключён"
+    return 0
+  fi
+
+  local free_mb
+  free_mb=$(df -Pm / | awk 'NR==2{print $4}')
+  if (( free_mb < 2600 )); then
+    log "RAM ${mem_mb} МБ, но на / всего ${free_mb} МБ свободно — swap не делаю (сборка образов может упасть по памяти)"
+    return 0
+  fi
+
+  log "RAM ${mem_mb} МБ — создаю ${SWAPFILE} 2 ГБ (иначе сборка ovpn-admin рискует OOM)"
+  rm -f "$SWAPFILE"
+  if ! fallocate -l 2G "$SWAPFILE" 2>/dev/null; then
+    dd if=/dev/zero of="$SWAPFILE" bs=1M count=2048 status=none
+  fi
+  chmod 600 "$SWAPFILE"
+  mkswap "$SWAPFILE" >/dev/null
+  if ! swapon "$SWAPFILE" 2>/dev/null; then
+    log "swapon не сработал (OpenVZ/LXC без поддержки swap?) — продолжаю без swap"
+    rm -f "$SWAPFILE"
+    return 0
+  fi
+  grep -qxF "$SWAPFILE none swap sw 0 0" /etc/fstab || echo "$SWAPFILE none swap sw 0 0" >> /etc/fstab
+  printf 'vm.swappiness = 10\n' > /etc/sysctl.d/99-ovpn-stack-swap.conf
+  sysctl -q -p /etc/sysctl.d/99-ovpn-stack-swap.conf 2>/dev/null || true
+  log "swap подключён: $(swapon --show=NAME,SIZE --noheadings 2>/dev/null | tr '\n' ' ')"
+}
+
 DROPIN_SSHD=/etc/ssh/sshd_config.d/99-ovpn-stack.conf
 SOCKET_DROPIN_DIR=/etc/systemd/system/ssh.socket.d
 SOCKET_DROPIN=$SOCKET_DROPIN_DIR/99-ovpn-stack.conf
@@ -134,6 +184,8 @@ cmd_system_prep() {
   else
     log "sudo / nftables / python3 уже на месте"
   fi
+
+  ensure_swap
 
   log "часовой пояс Europe/Moscow"
   timedatectl set-timezone Europe/Moscow
