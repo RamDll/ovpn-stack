@@ -50,7 +50,35 @@ cancel_safety_rollback() {
   log "страховочный таймер '${name}' снят — изменение подтверждено"
 }
 
-APT_OPTS=(-o DPkg::Lock::Timeout=120 -o Dpkg::Options::=--force-confold)
+APT_OPTS=(-o DPkg::Lock::Timeout=300 -o Dpkg::Options::=--force-confold)
+
+# Свежий VPS в первые минуты держит dpkg-lock под cloud-init / apt-daily /
+# unattended-upgrades (иногда с апгрейдом ядра — на несколько минут).
+# DPkg::Lock::Timeout сам по себе иногда не спасал (frontend-lock, > таймаута),
+# поэтому ещё и ждём явно, до 12 минут, потом пробуем — apt подождёт остаток.
+wait_dpkg_lock() {
+  local w=0 max=720
+  while pgrep -x 'apt|apt-get|dpkg|aptitude|unattended-upgr|packagekitd' >/dev/null 2>&1 \
+     || fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock >/dev/null 2>&1; do
+    (( w >= max )) && { log "dpkg-lock всё ещё занят после ${max}с — пробую всё равно"; return 0; }
+    (( w % 30 == 0 )) && log "dpkg-lock занят (cloud-init/unattended-upgrades) — жду... ${w}/${max}с"
+    sleep 5; w=$((w + 5))
+  done
+  (( w > 0 )) && log "dpkg-lock освободился за ${w}с"
+  return 0
+}
+
+# apt с ретраями — на свежем сервере lock может перехватиться между командами
+apt_do() {
+  local try
+  for try in 1 2 3; do
+    wait_dpkg_lock
+    if apt-get "${APT_OPTS[@]}" "$@"; then return 0; fi
+    log "apt-get $* — попытка $try не удалась, жду 20с и повторяю"
+    sleep 20
+  done
+  die "apt-get $* не прошёл после 3 попыток (dpkg-lock/сеть?)"
+}
 DROPIN_SSHD=/etc/ssh/sshd_config.d/99-ovpn-stack.conf
 SOCKET_DROPIN_DIR=/etc/systemd/system/ssh.socket.d
 SOCKET_DROPIN=$SOCKET_DROPIN_DIR/99-ovpn-stack.conf
@@ -65,15 +93,14 @@ cmd_system_prep() {
   need_root system-prep
   mkdir -p "$STATE_DIR"
 
-  log "жду освобождения dpkg-lock (cloud-init мог его занять)"
   export DEBIAN_FRONTEND=noninteractive
   export NEEDRESTART_MODE=a
 
   log "apt update"
-  apt-get "${APT_OPTS[@]}" update -qq
+  apt_do update -qq
 
   log "apt dist-upgrade"
-  apt-get "${APT_OPTS[@]}" -y dist-upgrade -qq
+  apt_do -y dist-upgrade -qq
 
   # инструменты, без которых установщик не отработает независимо от режима:
   # sudo (управление), nftables (firewall, шаг 3), python3 (правка x-ui.db /
@@ -86,7 +113,7 @@ cmd_system_prep() {
   done
   if [[ ${#need[@]} -gt 0 ]]; then
     log "доставляю: ${need[*]}"
-    apt-get "${APT_OPTS[@]}" -y install -qq "${need[@]}"
+    apt_do -y install -qq "${need[@]}"
   else
     log "sudo / nftables / python3 уже на месте"
   fi
@@ -109,7 +136,7 @@ cmd_system_prep() {
 
   log "unattended-upgrades (только security, авто-ребут 04:00)"
   if ! dpkg -l unattended-upgrades >/dev/null 2>&1; then
-    apt-get "${APT_OPTS[@]}" -y install -qq unattended-upgrades
+    apt_do -y install -qq unattended-upgrades
   fi
 
   cat > /etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
@@ -252,7 +279,7 @@ cmd_nftables_apply() {
   if ! command -v nft >/dev/null 2>&1; then
     log "nft не найден — ставлю nftables"
     export DEBIAN_FRONTEND=noninteractive
-    apt-get "${APT_OPTS[@]}" -y install -qq nftables || die "не смог поставить nftables"
+    apt_do -y install -qq nftables
   fi
 
   local tmpl="$INSTALL_DIR/install/templates/nftables.conf.tmpl"
