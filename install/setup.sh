@@ -6,8 +6,9 @@
 # Reality и/или OpenVPN, вызывая bootstrap.sh и install-vpn.sh на сервере
 # по одной подкоманде за раз.
 #
-# Использование:
-#   ./setup.sh [--vless|--openvpn|--all] [--ip <addr>] [--user <name>]
+# Использование (полный список флагов — ./setup.sh --help):
+#   ./setup.sh [--vless|--openvpn|--all] [--ip <addr>] [--user <name>] \
+#              [--ssh-port <p>] [--sni <domain>] [--staging]
 #
 # Секреты нигде не передаются аргументами (см. `ps`) — root-пароль и пароль
 # пользователя всегда через скрытый ввод/stdin.
