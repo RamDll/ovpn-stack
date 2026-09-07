@@ -26,6 +26,40 @@ ACME_TAG="3.1.4"   # пин версии — никаких curl|sh с апст�
                     # 3.0.9 не умеет --cert-profile (нужен для IP-сертификатов
                     # Let's Encrypt, профиль появился в 3.1.2+)
 
+# holding-page для заглушек: одна и та же «страница припаркованного домена»
+# и для локального fakesite-dest REALITY на :443 (cmd_fakesite_install), и для
+# корня nginx-вхоста с панелями на :8443 (cmd_render_nginx). Обе заглушки видны
+# стороннему наблюдателю (пробинг IP:443 обычным TLS, скан :8443) — держим их
+# идентичными, чтобы не отличались. Меняешь тут — меняется в обоих местах.
+# $1 — <title> (fakesite подставляет SNI-домен; корень :8443 — дефолт).
+emit_holding_page() {
+  local title="${1:-Site under construction}"
+  cat <<EOF
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${title}</title>
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       background:#fafafa;color:#333;display:flex;min-height:100vh;margin:0;
+       align-items:center;justify-content:center;text-align:center}
+  main{max-width:32rem;padding:2rem}
+  h1{font-weight:600;font-size:1.5rem;margin:0 0 .5rem}
+  p{color:#777;line-height:1.6;margin:0}
+</style>
+</head>
+<body>
+<main>
+<h1>Site under construction</h1>
+<p>This website is not available yet. Please check back later.</p>
+</main>
+</body>
+</html>
+EOF
+}
+
 # ---------------------------------------------------------------------------
 # шаг 4.0 — Docker (репозиторий apt, БЕЗ convenience-скрипта get.docker.com —
 # это ровно тот `curl | sh`, который запрещён принципом 5)
@@ -365,12 +399,10 @@ cmd_render_nginx() {
     : > "$RENDER_DIR/nginx/htpasswd"
   fi
 
+  # корень :8443 отдаёт ту же holding-page, что и fakesite-dest на :443
+  # (emit_holding_page) — заглушки в обоих местах идентичны.
   if [[ ! -f "$RENDER_DIR/nginx/html/index.html" ]]; then
-    cat > "$RENDER_DIR/nginx/html/index.html" <<'EOF'
-<!doctype html><html lang="en"><head><meta charset="utf-8">
-<title>It works</title></head>
-<body><p>It works.</p></body></html>
-EOF
+    emit_holding_page > "$RENDER_DIR/nginx/html/index.html"
   fi
 
   log "render-nginx готово -> $out"
@@ -562,31 +594,9 @@ cmd_fakesite_install() {
     # Простой holding-page вместо пустого <body>: при активном пробинге
     # IP:443 обычным TLS видно осмысленную «страницу-заглушку припаркованного
     # домена», а не подозрительно пустой документ. Правдоподобности это добавляет
-    # немного (главный тель — self-signed серт), но и не мешает.
-    cat > /var/www/ovpn-stack-fakesite/index.html <<EOF
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${domain}</title>
-<style>
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-       background:#fafafa;color:#333;display:flex;min-height:100vh;margin:0;
-       align-items:center;justify-content:center;text-align:center}
-  main{max-width:32rem;padding:2rem}
-  h1{font-weight:600;font-size:1.5rem;margin:0 0 .5rem}
-  p{color:#777;line-height:1.6;margin:0}
-</style>
-</head>
-<body>
-<main>
-<h1>Site under construction</h1>
-<p>This website is not available yet. Please check back later.</p>
-</main>
-</body>
-</html>
-EOF
+    # немного (главный тель — self-signed серт), но и не мешает. Та же страница
+    # отдаётся в корне :8443 (cmd_render_nginx) — см. emit_holding_page.
+    emit_holding_page "$domain" > /var/www/ovpn-stack-fakesite/index.html
   fi
 
   cat > /etc/nginx/conf.d/ovpn-stack-fakesite.conf <<EOF
