@@ -195,18 +195,36 @@ cmd_system_prep() {
   log "часовой пояс Europe/Moscow"
   timedatectl set-timezone Europe/Moscow
 
-  if ! systemctl is-active --quiet systemd-timesyncd; then
+  # Время должно синхронизироваться — расхождение ломает TLS-хендшейк Reality.
+  # Провайдерский образ может уже нести chrony/ntpsec (тогда timesyncd не нужен,
+  # а его systemd-юнита может не быть вовсе — `enable` на несуществующем юните
+  # роняет прогон под set -e). Логика: уже синхронизировано / есть живой
+  # NTP-демон — не трогаем; есть юнит timesyncd — включаем; иначе ставим его.
+  ntp_ok() { [[ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" == yes ]]; }
+  ntp_daemon_up() {
+    local s
+    for s in systemd-timesyncd chrony chronyd ntpsec ntpd openntpd; do
+      systemctl is-active --quiet "$s" 2>/dev/null && return 0
+    done
+    return 1
+  }
+  if ntp_ok || ntp_daemon_up; then
+    log "синхронизация времени уже активна"
+  elif systemctl list-unit-files systemd-timesyncd.service >/dev/null 2>&1; then
     log "включаю systemd-timesyncd"
-    systemctl enable --now systemd-timesyncd
+    systemctl enable --now systemd-timesyncd || log "не удалось включить systemd-timesyncd, продолжаю"
+  else
+    log "в образе нет NTP-демона — ставлю systemd-timesyncd"
+    apt_do -y install -qq systemd-timesyncd \
+      && systemctl enable --now systemd-timesyncd \
+      || log "не удалось поднять синхронизацию времени, продолжаю"
   fi
-  # даём синку до 10с — расхождение времени ломает TLS-хендшейк Reality
+  # даём синку до 10с
   for _ in $(seq 1 10); do
-    timedatectl show -p NTPSynchronized --value 2>/dev/null | grep -qx yes && break
+    ntp_ok && break
     sleep 1
   done
-  if [[ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" != "yes" ]]; then
-    log "предупреждение: время ещё не синхронизировано (NTPSynchronized=no), продолжаю"
-  fi
+  ntp_ok || log "предупреждение: время ещё не синхронизировано (NTPSynchronized=no), продолжаю"
 
   log "unattended-upgrades (только security, авто-ребут 04:00)"
   if ! dpkg -l unattended-upgrades >/dev/null 2>&1; then
