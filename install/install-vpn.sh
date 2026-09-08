@@ -418,7 +418,7 @@ cmd_render_nginx() {
 compose_up_retry() {
   local try
   for try in 1 2 3 4; do
-    if ( cd "$RENDER_DIR" && docker compose -f docker-compose.yml up -d --build "$@" ); then
+    if ( cd "$RENDER_DIR" && docker compose -f docker-compose.yml up -d --build --quiet-pull "$@" ); then
       return 0
     fi
     (( try == 4 )) && die "docker compose up не прошёл после 4 попыток (сеть до ghcr.io/docker.io?)"
